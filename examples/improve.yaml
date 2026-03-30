@@ -1,0 +1,88 @@
+# =============================================================================
+# 改善サイクル用テンプレート
+# =============================================================================
+#
+# 既存アプリの問題分析 → 修正 → テスト検証を一気通貫で行う。
+# 「何をするか」は --input で実行時に指定する。
+#
+# 使い方:
+#   python main.py run workspace/settings/my-app/improve.yaml --auto-approve \
+#     --input "テストカバレッジを増やして"
+#   python main.py run workspace/settings/my-app/improve.yaml --auto-approve \
+#     --input "気の利いた機能を1つ企画して追加して"
+
+project:
+  name: "My App - Improve"
+  work_dir: "../../projects/my-app"  # ← プロジェクトに合わせて変更
+
+generation:
+  default_backend: "gemini"
+  default_model: "gemini-2.5-pro"
+  default_timeout_sec: 600
+  default_permission_mode: "dangerously-skip-permissions"
+  max_retries: 3
+  stop_on_failure: true
+  use_leader: false
+  confidence_threshold: 80
+  confidence_step: 5
+
+roles:
+  coder:
+    backend: "codex"
+    model: "gpt-5.4"
+  tester:
+    backend: "codex"
+    model: "gpt-5.4"
+  explorer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+  reviewer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+
+checks:
+  commands:
+    - "echo 'TODO: プロジェクトに合わせて検査コマンドを設定'"
+
+phases:
+  - id: "analyze"
+    title: "問題分析・企画"
+    description: "既存コードを読み、ユーザー指示に基づいて改善計画を立てる"
+    tasks:
+      - "ワークディレクトリの既存コードを全て読む"
+      - "ユーザー指示の内容に基づき、具体的な改善計画を立てる"
+      - "改善計画を PLAN.md としてワークディレクトリに保存"
+      - "PLAN.md には変更対象ファイル、変更内容、理由を含める"
+    steps:
+      - role: explorer
+        action: analyze
+
+  - id: "implement"
+    title: "改善実装"
+    description: "分析結果に基づいてコードを修正・追加する"
+    dependencies:
+      - "analyze: 問題分析・企画"
+    tasks:
+      - "PLAN.md の改善計画に従って実装する"
+      - "既存の動作を壊さないよう注意する"
+    steps:
+      - role: coder
+        action: implement
+      - role: checker
+        action: run_checks
+      - role: reviewer
+        action: review
+
+  - id: "verify"
+    title: "テスト検証"
+    description: "改善後の動作を検証し、必要ならテストを追加する"
+    dependencies:
+      - "implement: 改善実装"
+    tasks:
+      - "既存テストが通ることを確認"
+      - "改善内容に対応するテストがなければ追加"
+    steps:
+      - role: tester
+        action: write_tests
+      - role: checker
+        action: run_checks

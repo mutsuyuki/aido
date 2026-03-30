@@ -1,0 +1,469 @@
+"""
+パイプライン実行
+
+Phase の順次実行、ステップ列の実行、リトライ制御、
+Leader 判断によるフロー変更を担当する。
+"""
+from __future__ import annotations
+
+import datetime
+import json
+import shutil
+import time
+from dataclasses import asdict
+from pathlib import Path
+
+from src.ai_backend import SessionManager
+from src.config import (
+    resolve_prompt,
+    resolve_context_files,
+    get_role_config,
+    get_check_config,
+)
+from src.models import AttemptLog, PhaseResult, PipelineState
+from src.steps import execute_step
+from src.leader import (
+    build_checkpoint_prompt,
+    build_plan_review_prompt,
+    build_final_review_prompt,
+    call_leader,
+    LEADER_ROLE,
+)
+
+AIDO_DIR = Path(__file__).resolve().parent.parent  # src/ の親 = リポジトリルート
+
+
+# ==========================================
+# 成果物・ログ保存
+# ==========================================
+def _save_attempt_log(run_dir: Path, phase_id: str, attempt: int, log: AttemptLog) -> None:
+    d = run_dir / phase_id / f"attempt_{attempt:02d}"
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / "log.json", "w", encoding="utf-8") as f:
+        json.dump(asdict(log), f, ensure_ascii=False, indent=2)
+
+
+def _save_step_artifact(run_dir: Path, phase_id: str, attempt: int, result: StepResult) -> None:
+    """ステップの成果物をファイルに保存する"""
+    d = run_dir / phase_id / f"attempt_{attempt:02d}"
+    d.mkdir(parents=True, exist_ok=True)
+    prefix = f"{result.role}_{result.action}"
+
+    # AI出力
+    if result.output and result.role not in ("checker", "human"):
+        (d / f"{prefix}.md").write_text(result.output, encoding="utf-8")
+
+    # reviewer/leader のパース済みJSON
+    if result.parsed:
+        with open(d / f"{prefix}.json", "w", encoding="utf-8") as f:
+            json.dump(result.parsed, f, ensure_ascii=False, indent=2)
+
+    # checker の stdout/stderr
+    if result.role == "checker":
+        if result.checker_stdout:
+            (d / f"{prefix}_stdout.txt").write_text(result.checker_stdout, encoding="utf-8")
+        if result.checker_stderr:
+            (d / f"{prefix}_stderr.txt").write_text(result.checker_stderr, encoding="utf-8")
+
+
+def _save_pipeline_summary(run_dir: Path, state: PipelineState, results: list[PhaseResult]) -> None:
+    """パイプライン全体のサマリーを保存する"""
+    summary = {
+        "project": state.project_name,
+        "total_phases": state.total_phases,
+        "completed": state.completed,
+        "failed": state.failed,
+        "issues": state.issues,
+        "phase_summaries": state.phase_summaries,
+        "results": [asdict(r) for r in results],
+    }
+    with open(run_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+
+
+def _load_prior_outputs(run_dir: Path, completed_phases: list[str]) -> str:
+    """完了済みフェーズの成果物をまとめて返す（次フェーズへの注入用）"""
+    parts = []
+    for pid in completed_phases:
+        phase_dir = run_dir / pid
+        if not phase_dir.exists():
+            continue
+        # 最後の attempt の成果物を使う
+        attempt_dirs = sorted(d for d in phase_dir.iterdir() if d.is_dir())
+        if not attempt_dirs:
+            continue
+        last_attempt = attempt_dirs[-1]
+        for f in sorted(last_attempt.iterdir()):
+            if f.is_file() and f.suffix in (".md", ".json", ".txt") and f.name != "log.json":
+                content = f.read_text(encoding="utf-8")
+                # 大きすぎる出力は切り詰め
+                if len(content) > 3000:
+                    content = content[:3000] + "\n... (truncated)"
+                parts.append(f"### {pid} / {f.name}\n{content}")
+    return "\n\n".join(parts)
+
+
+# ==========================================
+# Step 単位プロンプトの事前解決
+# ==========================================
+def _resolve_step_prompts(phases: list[dict], project_dir: Path) -> dict[str, str]:
+    """
+    Phase の steps に prompt フィールドがある場合、事前に読み込んでおく。
+    キーは prompt ファイル名、値はボディ文字列。
+    """
+    step_prompts: dict[str, str] = {}
+    for phase in phases:
+        for step in phase.get("steps", []):
+            prompt_file = step.get("prompt")
+            if prompt_file and prompt_file not in step_prompts:
+                try:
+                    step_prompts[prompt_file] = resolve_prompt(prompt_file, project_dir)
+                except FileNotFoundError:
+                    step_prompts[prompt_file] = ""
+    return step_prompts
+
+
+# ==========================================
+# Phase 実行
+# ==========================================
+def execute_phase(
+    phase: dict,
+    session_managers: dict[str, SessionManager],
+    role_configs: dict[str, dict],
+    system_prompts: dict[str, str],
+    check_config: dict,
+    work_dir: Path,
+    context: str,
+    max_retries: int,
+    run_dir: Path,
+    auto_approve: bool = False,
+    confidence_threshold: int = 80,
+    confidence_step: int = 5,
+    prior_outputs: str = "",
+) -> PhaseResult:
+    """Phase 内のステップ列を実行し、失敗時はリトライする"""
+    pid = phase["id"]
+    title = phase["title"]
+    steps = phase.get("steps", [])
+
+    # フェーズ固有の checks があればグローバルより優先
+    effective_check_config = phase.get("checks", check_config)
+
+    print(f"\n{'='*60}")
+    print(f"Phase: {pid} - {title}")
+    step_names = [f"{s['role']}/{s.get('action', s['role'])}" for s in steps]
+    print(f"Steps: {' -> '.join(step_names)}")
+    print(f"{'='*60}")
+
+    logs: list[AttemptLog] = []
+    repair = ""
+
+    for attempt in range(1, max_retries + 1):
+        print(f"\n  --- 試行 {attempt}/{max_retries} ---")
+
+        # リトライ回数に応じてconfidence閾値を引き上げ（最大100）
+        effective_threshold = min(confidence_threshold + confidence_step * (attempt - 1), 100)
+        if effective_threshold != confidence_threshold:
+            print(f"  (confidence_threshold: {effective_threshold})")
+
+        attempt_log = AttemptLog(attempt=attempt)
+        all_ok = True
+
+        for step in steps:
+            result = execute_step(
+                step=step,
+                phase=phase,
+                session_managers=session_managers,
+                role_configs=role_configs,
+                system_prompts=system_prompts,
+                check_config=effective_check_config,
+                work_dir=work_dir,
+                context=context,
+                repair_instructions=repair,
+                auto_approve=auto_approve,
+                confidence_threshold=effective_threshold,
+                prior_outputs=prior_outputs,
+            )
+            attempt_log.steps.append(result)
+            _save_step_artifact(run_dir, pid, attempt, result)
+
+            if not result.success:
+                all_ok = False
+                if result.role == "human":
+                    attempt_log.decision = "rejected_by_user"
+                    # human が拒否したらリトライせず即失敗
+                    logs.append(attempt_log)
+                    _save_attempt_log(run_dir, pid, attempt, attempt_log)
+                    return PhaseResult(pid, title, "failed", logs)
+                elif result.role == "checker":
+                    # 構造化フィードバック: failures + stdout/stderr
+                    repair_parts = ["機械検査の失敗:"]
+                    repair_parts.extend(f"- {f}" for f in result.failures)
+                    if result.checker_stdout:
+                        repair_parts.append(f"\n### 標準出力:\n```\n{result.checker_stdout[:2000]}\n```")
+                    if result.checker_stderr:
+                        repair_parts.append(f"\n### エラー出力:\n```\n{result.checker_stderr[:2000]}\n```")
+                    repair = "\n".join(repair_parts)
+                elif result.parsed and not result.parsed.get("pass", False):
+                    repair = result.parsed.get("repair_instructions", "品質を改善してください")
+                else:
+                    repair = f"{result.role}/{result.action} が失敗しました: {result.failures}"
+                attempt_log.decision = f"failed_{result.role}"
+                break
+
+            # reviewer が pass=false を返した場合
+            if result.parsed and result.parsed.get("pass") is False:
+                all_ok = False
+                # confidence 付き issues から repair_instructions を構築
+                issues = result.parsed.get("issues", [])
+                if issues and isinstance(issues[0], dict):
+                    issue_lines = []
+                    for iss in issues:
+                        desc = iss.get("description", str(iss))
+                        fix = iss.get("fix", "")
+                        file_ref = iss.get("file", "")
+                        line = f"- [{iss.get('confidence', '?')}] {desc}"
+                        if file_ref:
+                            line += f" ({file_ref})"
+                        if fix:
+                            line += f"\n  修正案: {fix}"
+                        issue_lines.append(line)
+                    repair = "レビュー指摘:\n" + "\n".join(issue_lines)
+                else:
+                    repair = result.parsed.get("repair_instructions", "品質を改善してください")
+                attempt_log.decision = "failed_review"
+                print(f"  [review] 修正指示: {repair[:150]}...")
+                break
+
+            # human が skip を返した場合
+            if result.role == "human" and result.output == "skipped":
+                print(f"  [human] スキップされました")
+                break
+
+        if all_ok:
+            attempt_log.decision = "accepted"
+            logs.append(attempt_log)
+            _save_attempt_log(run_dir, pid, attempt, attempt_log)
+            print(f"\n  Phase {pid} 合格!")
+            return PhaseResult(pid, title, "accepted", logs)
+
+        logs.append(attempt_log)
+        _save_attempt_log(run_dir, pid, attempt, attempt_log)
+
+        # リトライ前にウェイト（指数バックオフ: 30s, 60s, 120s, ...）
+        if attempt < max_retries:
+            wait_sec = 30 * (2 ** (attempt - 1))
+            print(f"\n  リトライ待機中... {wait_sec}秒")
+            time.sleep(wait_sec)
+
+    print(f"\n  Phase {pid} 最大試行数到達。失敗。")
+    return PhaseResult(pid, title, "failed", logs)
+
+
+# ==========================================
+# パイプライン全体実行
+# ==========================================
+def run_pipeline(
+    config: dict,
+    auto_approve: bool = False,
+    user_input: str = "",
+    resume_run: str | None = None,
+) -> list[PhaseResult]:
+    """パイプライン全体を実行する"""
+    project = config["project"]
+    gen = config.get("generation", {})
+    phases = list(config["phases"])
+    project_dir = Path(config["_project_dir"])
+    work_dir = Path(project["work_dir"])
+    use_leader = gen.get("use_leader", False)
+    max_retries = gen.get("max_retries", 3)
+    stop_on_failure = gen.get("stop_on_failure", True)
+    confidence_threshold = gen.get("confidence_threshold", 80)
+    confidence_step = gen.get("confidence_step", 5)
+
+    # ignore ファイルを aido ルートから work_dir にコピー
+    for ignore_file in [".geminiignore", ".claudeignore"]:
+        src = AIDO_DIR / ignore_file
+        dst = work_dir / ignore_file
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            print(f"  Copied {ignore_file} to {work_dir}")
+
+    # runs/ は workspace/runs/<settings_dir_name>/ に保存
+    # project_dir = workspace/settings/gemma-chat/ → .parent = settings/ → .parent = workspace/
+    runs_base = project_dir.parent.parent / "runs" / project_dir.name
+    run_dir = runs_base / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # ロール設定の解決（frontmatter マージ対応）
+    role_configs = get_role_config(config, project_dir)
+    check_config = get_check_config(config, project_dir)
+    context = resolve_context_files(project_dir)
+    if user_input:
+        context += f"\n\n=== ユーザー指示 ===\n{user_input}"
+
+    # --resume-run: 前回の runs/ から成果物を引き継ぐ
+    resume_run_dir: Path | None = None
+    if resume_run:
+        candidate = Path(resume_run)
+        if not candidate.is_absolute():
+            candidate = runs_base.parent / candidate
+        if candidate.is_dir():
+            resume_run_dir = candidate
+            print(f"  Resume run: {resume_run_dir}")
+
+    # SessionManager をロールごとに作成
+    session_managers: dict[str, SessionManager] = {}
+    for role_name, rcfg in role_configs.items():
+        session_managers[role_name] = SessionManager(
+            backend=rcfg["backend"],
+            model=rcfg["model"],
+            timeout_sec=rcfg["timeout_sec"],
+            permission_mode=rcfg["permission_mode"],
+        )
+
+    # システムプロンプトの読み込み（ロール単位）
+    system_prompts: dict[str, str] = {}
+    for role_name, rcfg in role_configs.items():
+        try:
+            system_prompts[role_name] = resolve_prompt(rcfg["prompt"], project_dir)
+        except FileNotFoundError:
+            system_prompts[role_name] = ""
+
+    # Step 単位のプロンプトも事前に読み込む
+    step_prompts = _resolve_step_prompts(phases, project_dir)
+    system_prompts.update(step_prompts)
+
+    # パイプライン状態
+    state = PipelineState(
+        project_name=project["name"],
+        total_phases=len(phases),
+        remaining=[p["id"] for p in phases],
+    )
+
+    # --- Leader: 計画確認 ---
+    if use_leader:
+        print("\n[Leader] 計画レビュー中...")
+        plan_prompt = build_plan_review_prompt(
+            system_prompts.get("leader", ""),
+            project["name"], phases, context,
+        )
+        decision = call_leader(plan_prompt, session_managers["leader"], work_dir)
+        print(f"[Leader] 判断: {decision.decision} - {decision.notes}")
+        if decision.decision == "abort":
+            print("[Leader] パイプラインを中止します。")
+            return []
+        state.issues.extend(decision.issues_to_track)
+
+    # --- Phase 実行ループ ---
+    results: list[PhaseResult] = []
+    i = 0
+
+    while i < len(phases):
+        phase = phases[i]
+        pid = phase["id"]
+
+        state.remaining = [p["id"] for p in phases[i:]]
+
+        # 完了済みフェーズの成果物を収集（今回の run + resume 元）
+        prior_outputs = _load_prior_outputs(run_dir, state.completed)
+        if resume_run_dir and not prior_outputs:
+            # 今回の run にまだ成果物がなければ、resume 元から読む
+            all_phase_ids = [p["id"] for p in phases]
+            prior_outputs = _load_prior_outputs(resume_run_dir, all_phase_ids)
+
+        result = execute_phase(
+            phase=phase,
+            session_managers=session_managers,
+            role_configs=role_configs,
+            system_prompts=system_prompts,
+            check_config=check_config,
+            work_dir=work_dir,
+            context=context,
+            max_retries=max_retries,
+            run_dir=run_dir,
+            auto_approve=auto_approve,
+            confidence_threshold=confidence_threshold,
+            confidence_step=confidence_step,
+            prior_outputs=prior_outputs,
+        )
+        results.append(result)
+
+        # 状態更新
+        if result.status == "accepted":
+            state.completed.append(pid)
+        else:
+            state.failed.append(pid)
+        state.phase_summaries[pid] = {
+            "status": result.status,
+            "attempts": len(result.attempts),
+        }
+
+        # --- Leader: checkpoint ---
+        if use_leader:
+            print(f"\n[Leader] checkpoint: Phase {pid} 完了後の判断中...")
+            cp_prompt = build_checkpoint_prompt(
+                system_prompts.get("leader", ""),
+                state, result, phases[i + 1:],
+            )
+            decision = call_leader(cp_prompt, session_managers["leader"], work_dir)
+            print(f"[Leader] 判断: {decision.decision} - {decision.notes}")
+
+            state.issues.extend(decision.issues_to_track)
+
+            if decision.decision == "abort":
+                print("[Leader] パイプラインを中止します。")
+                break
+            elif decision.decision == "retry":
+                print(f"[Leader] Phase {pid} をリトライします。")
+                if result.status == "failed":
+                    state.failed.remove(pid)
+                continue
+            elif decision.decision == "skip":
+                print(f"[Leader] 次の Phase をスキップします。")
+                i += 2
+                continue
+            elif decision.decision == "add_phase":
+                for change in decision.plan_changes:
+                    if change.get("action") == "add_phase" and "phase" in change:
+                        new_phase = change["phase"]
+                        insert_after = change.get("after", pid)
+                        idx = next(
+                            (j for j, p in enumerate(phases) if p["id"] == insert_after),
+                            i,
+                        )
+                        phases.insert(idx + 1, new_phase)
+                        state.total_phases = len(phases)
+                        print(f"[Leader] Phase追加: {new_phase.get('id', '?')} (after {insert_after})")
+        else:
+            if result.status == "failed" and stop_on_failure:
+                print(f"\n[中断] Phase {pid} が失敗。パイプラインを停止します。")
+                break
+
+        i += 1
+
+    # --- Leader: 最終評価 ---
+    if use_leader:
+        print(f"\n[Leader] 最終評価中...")
+        final_prompt = build_final_review_prompt(
+            system_prompts.get("leader", ""), state,
+        )
+        decision = call_leader(final_prompt, session_managers["leader"], work_dir)
+        print(f"[Leader] 最終評価: {decision.notes}")
+
+    # --- サマリー保存 ---
+    _save_pipeline_summary(run_dir, state, results)
+
+    print(f"\n{'='*60}")
+    print("=== 実行結果サマリー ===")
+    print(f"  Run: {run_dir}")
+    for r in results:
+        icon = "OK" if r.status == "accepted" else "NG"
+        print(f"  [{icon}] {r.phase_id}: {r.title} ({r.status}, {len(r.attempts)}試行)")
+    if state.issues:
+        print("\n=== 追跡中の問題 ===")
+        for issue in state.issues:
+            print(f"  - {issue}")
+    print("Done.")
+
+    return results

@@ -1,0 +1,273 @@
+# ========================================
+# OS / エディタ / 一般的なゴミファイル
+# ========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.nfs*
+
+# 一時ファイル・バックアップ
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*.tmp.*
+*.backup
+
+# ========================================
+# バージョン管理にはあっても、LLMには不要なもの
+# （コンテキスト圧迫するだけ＆中身を読んでも意味が薄い）
+# ========================================
+
+# ビルド成果物 / バイナリ
+bin/
+obj/
+out/
+build/
+dist/
+target/
+release/
+debug/
+Debug/
+Release/
+
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+*.o
+*.obj
+*.pdb
+
+# アーカイブ
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# パッケージロック類（必要なら外してOK）
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+# ※依存関係が重要なら上記はコメントアウトしてもよい
+
+# ========================================
+# 画像・動画・音声などの重いバイナリ（中身見ても意味が薄い想定）
+# ※「中身も解説してほしい画像解析系プロジェクト」ならここは調整して
+# ========================================
+
+# 画像
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.tga
+*.tif
+*.tiff
+*.bmp
+*.psd
+*.ai
+*.ico
+*.icns
+*.svg
+
+# 3D / CAD
+*.fbx
+*.obj
+*.stl
+*.step
+*.iges
+*.3ds
+*.dae
+
+# 音声
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.aiff
+*.aac
+*.m4a
+
+# 動画
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wmv
+
+# フォント
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# ========================================
+# ログ / キャッシュ / 一時データ
+# ========================================
+
+logs/
+log/
+*.log
+
+.cache/
+.cache*/
+.cache-*/
+.cache_db/
+
+tmp/
+temp/
+*.pid
+
+# node / npm
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.venv/
+venv/
+env/
+
+# Java / JVM
+*.class
+.gradle/
+.build/
+.mvn/
+target/
+
+# Rust
+target/
+cargo-target/
+
+# Go
+*.test
+go.sum
+# go.sumを読ませたいなら上行をコメントアウト
+
+# ========================================
+# IDE / エディタ関連
+# ========================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains (IntelliJ / Rider / PyCharm etc.)
+.idea/
+*.iml
+.gradle/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Others
+*.orig
+*.rej
+
+# ========================================
+# シークレット / 資格情報 / 個人情報っぽいもの
+# （ここはかなり多めにブロックしておく）
+# ========================================
+
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.crt
+*.cert
+*.pfx
+*.p12
+*.keystore
+*.jks
+
+# クラウド / CI 割とありがち系
+*.pub         # 公開鍵。厳密には公開情報だが一応除外
+.github-token
+.git-credentials
+*.aws
+.aws/
+.gcloud/
+.gcp/
+.azure/
+
+# ========================================
+# DB / 大きなデータファイル
+# ========================================
+
+*.db
+*.sqlite
+*.sqlite3
+*.mdb
+*.accdb
+
+*.parquet
+*.feather
+*.arrow
+*.npy
+*.npz
+*.pth
+*.pt
+*.h5
+*.onnx
+*.pb
+*.ckpt
+*.pkl
+*.pickle
+
+
+# ========================================
+# バックアップ / スナップショット / その他
+# ========================================
+
+.backup/
+backups/
+snapshot/
+snapshots/
+archive/
+archives/
+old/
+old_*/
+
+
+# ========================================
+# gitignore打ち消し
+# ========================================
+!workspace/
+!workspace/**

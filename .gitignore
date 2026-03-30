@@ -1,0 +1,16 @@
+# Environment
+.env
+
+# AI CLI configs
+.gemini/
+!.gemini/skills/
+.claude/
+!.claude/skills/
+.claude.json
+.codex/
+
+# Python
+__pycache__/
+
+# Workspace (projects, runs, docker - all gitignored)
+workspace/

@@ -1,0 +1,54 @@
+# =============================================================================
+# バグ修正用テンプレート
+# =============================================================================
+#
+# 既知の問題を --input で指定し、修正 → テスト → レビューを1フェーズで行う。
+#
+# 使い方:
+#   python main.py run workspace/settings/my-app/fix.yaml --auto-approve \
+#     --input "ログインページで500エラーが出る"
+#   python main.py run workspace/settings/my-app/fix.yaml --auto-approve \
+#     --input-file bugfix.md
+
+project:
+  name: "My App - Fix"
+  work_dir: "../../projects/my-app"  # ← プロジェクトに合わせて変更
+
+generation:
+  default_backend: "gemini"
+  default_model: "gemini-2.5-pro"
+  default_timeout_sec: 600
+  default_permission_mode: "dangerously-skip-permissions"
+  max_retries: 3
+  stop_on_failure: true
+  use_leader: false
+  confidence_threshold: 80
+  confidence_step: 5
+
+roles:
+  coder:
+    backend: "codex"
+    model: "gpt-5.4"
+  reviewer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+
+checks:
+  commands:
+    - "echo 'TODO: プロジェクトに合わせて検査コマンドを設定'"
+
+phases:
+  - id: "fix"
+    title: "バグ修正"
+    description: "ユーザー指示で指定された問題を修正する"
+    tasks:
+      - "ワークディレクトリの既存コードを読んで問題の原因を特定"
+      - "最小限の変更で修正する"
+      - "既存の動作を壊さないこと"
+    steps:
+      - role: coder
+        action: implement
+      - role: checker
+        action: run_checks
+      - role: reviewer
+        action: review

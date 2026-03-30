@@ -1,0 +1,166 @@
+# =============================================================================
+# aido プロジェクト設定 — 新規開発用テンプレート
+# =============================================================================
+#
+# 使い方:
+#   1. テンプレートをコピー:
+#      python main.py init workspace/settings/<プロジェクト名>
+#   2. このファイルと context/app_spec.md を編集
+#   3. 実行:
+#      python main.py run workspace/settings/<プロジェクト名>/project.yaml --auto-approve
+#      python main.py run workspace/settings/<プロジェクト名>/project.yaml --dry-run
+#
+# ディレクトリ構成:
+#   (repo root)/
+#     main.py                      ← CLI エントリポイント
+#     src/                         ← フレームワーク本体
+#     prompts/                     ← デフォルトプロンプト
+#     workspace/
+#       settings/
+#         my-app/                  ← このファイルのコピー先
+#           project.yaml
+#           context/app_spec.md    ← アプリ仕様書
+#           prompts/               ← ロールプロンプト上書き用（任意）
+#       projects/
+#         my-app/                  ← work_dir（生成物の出力先）
+#       runs/
+#         my-app/                  ← 実行ログ（自動生成）
+
+# --- プロジェクト基本情報 ---
+project:
+  name: "My App"                   # プロジェクト名（ログ表示用）
+  work_dir: "../../projects/my-app"  # 生成物の出力先（この yaml からの相対パス）
+
+# --- AI 全体設定 ---
+generation:
+  default_backend: "gemini"        # claude / gemini / codex
+  default_model: "gemini-2.5-pro"
+  default_timeout_sec: 600
+  default_permission_mode: "dangerously-skip-permissions"
+  max_retries: 3                   # 各フェーズの最大リトライ回数
+  stop_on_failure: true            # フェーズ失敗時にパイプラインを停止
+  use_leader: false                # Leader AI による自律判断（上級者向け）
+  confidence_threshold: 80         # reviewer の confidence フィルタ閾値
+  confidence_step: 5               # リトライごとの閾値増分（80→85→90→...→100）
+
+# --- ロール別設定（省略時は generation のデフォルトを使用） ---
+roles:
+  coder:
+    backend: "codex"
+    model: "gpt-5.4"
+  tester:
+    backend: "codex"
+    model: "gpt-5.4"
+  explorer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+  designer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+  reviewer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+
+# --- 機械検査（全フェーズ共通） ---
+# フェーズ単位で上書きも可能（phase 内に checks: を書く）
+checks:
+  commands:
+    - "echo 'TODO: プロジェクトに合わせて検査コマンドを設定'"
+    # 例: Python の構文チェック
+    # - "cd /path/to/work_dir && python -c \"import py_compile, glob; [py_compile.compile(f, doraise=True) for f in glob.glob('**/*.py', recursive=True)]\""
+    # 例: pytest
+    # - "cd /path/to/work_dir && python -m pytest tests/ -x"
+
+# --- フェーズ定義 ---
+# 上から順に実行される。各フェーズ内の steps も上から順に実行。
+phases:
+  - id: "phase_01"
+    title: "プロジェクト構造設計"
+    description: "アプリのディレクトリ構造とファイル構成を設計する"
+    tasks:
+      - "ディレクトリ構造を設計"
+      - "必要なファイル一覧と各ファイルの責務を定義"
+      - "設計結果を DESIGN.md としてワークディレクトリに保存"
+    steps:
+      - role: designer
+        action: design
+
+  - id: "phase_02"
+    title: "データモデル実装"
+    description: "データモデルとDB初期化を実装する"
+    dependencies:
+      - "phase_01: プロジェクト構造設計"
+    tasks:
+      - "データモデルを実装"
+      - "DB 初期化処理を実装"
+    steps:
+      - role: coder
+        action: implement
+      - role: checker
+        action: run_checks
+
+  - id: "phase_03"
+    title: "メイン機能の実装"
+    description: "アプリのメイン機能を実装する"
+    dependencies:
+      - "phase_02: データモデル実装"
+    review_checklist:
+      - "設計通りに実装されていること"
+      - "エラーハンドリングが適切であること"
+    steps:
+      - role: coder
+        action: implement
+      - role: checker
+        action: run_checks
+      - role: reviewer
+        action: review
+
+  - id: "phase_04"
+    title: "テスト作成"
+    description: "E2E テストまたはユニットテストを作成する"
+    dependencies:
+      - "phase_03: メイン機能の実装"
+    steps:
+      - role: tester
+        action: write_tests
+      - role: checker
+        action: run_checks
+      - role: reviewer
+        action: review
+
+# =============================================================================
+# 設定の書き方リファレンス
+# =============================================================================
+#
+# ■ Step で使えるロール:
+#   - role: explorer     # コード調査（read-only）
+#   - role: designer     # 設計ドキュメント作成
+#   - role: coder        # 実装
+#   - role: tester       # テスト作成
+#   - role: checker      # 機械検査（非AI）
+#   - role: reviewer     # コードレビュー（JSON応答）
+#   - role: human        # ユーザー確認（action: approve）
+#
+# ■ Step 単位でプロンプトを上書き（観点別レビュー等）:
+#   - role: reviewer
+#     action: review
+#     prompt: reviewer_security.md   # prompts/ 内のファイル名
+#
+# ■ AIの代わりに人間が作業:
+#   - role: coder
+#     action: implement
+#     human_override: true
+#
+# ■ フェーズ固有の検査（グローバル checks を上書き）:
+#   - id: "test_phase"
+#     checks:
+#       commands:
+#         - "cd /path/to/app && python -m pytest tests/ -x"
+#
+# ■ 実行時オプション:
+#   --input "修正内容"          動的指示の注入
+#   --input-file issues.md      ファイルから動的指示を読み込み
+#   --only phase_01 phase_02    特定フェーズのみ実行
+#   --resume-run runs/xxx       前回の成果物を引き継ぐ
+#   --dry-run                   実行せずに計画を表示
+#   --auto-approve              human ステップを自動承認

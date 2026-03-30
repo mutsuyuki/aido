@@ -1,0 +1,86 @@
+# =============================================================================
+# 企画立案テンプレート
+# =============================================================================
+#
+# 3人のプランナーが異なる視点で企画を提案し、
+# 2人のレビューワーが比較・フィードバックを行うループを回す。
+# max_retries がブラッシュアップの回数になる。
+#
+# 使い方:
+#   python main.py run workspace/settings/my-app/plan.yaml --auto-approve \
+#     --input "ローカルLLMを活用した個人向けアプリを企画して"
+#   python main.py run workspace/settings/my-app/plan.yaml --auto-approve \
+#     --input-file idea.md
+
+project:
+  name: "My App - Plan"
+  work_dir: "../../projects/my-app"  # ← 企画書の出力先
+
+generation:
+  default_backend: "gemini"
+  default_model: "gemini-2.5-pro"
+  default_timeout_sec: 600
+  default_permission_mode: "dangerously-skip-permissions"
+  max_retries: 3                     # ← ブラッシュアップの回数
+  stop_on_failure: true
+  use_leader: false
+  confidence_threshold: 80
+  confidence_step: 0                 # ← 閾値固定（毎回ちゃんとレビュー）
+
+roles:
+  designer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+    session: "stateless"             # ← 各プランナーが独立した視点を持つ
+  reviewer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+    session: "stateless"
+
+# checks は不要（コード生成しないため）
+checks:
+  commands: []
+
+phases:
+  # -------------------------------------------------------
+  # 企画ブレスト → 比較レビュー → ブラッシュアップのループ
+  # -------------------------------------------------------
+  - id: "brainstorm"
+    title: "企画立案・比較・ブラッシュアップ"
+    description: |
+      3人のプランナーがそれぞれ異なる視点で企画を提案し、
+      2人のレビューワーが比較評価してフィードバックを返す。
+      レビューが pass しなければプランナーがフィードバックを元に改善する。
+    tasks:
+      - "3つの異なる視点から企画を提案する"
+      - "企画を比較評価し、建設的なフィードバックを返す"
+      - "フィードバックを元に企画をブラッシュアップする"
+    steps:
+      # --- 3人のプランナー ---
+      - role: designer
+        action: propose_creative
+        prompt: planner_creative_system.md
+      - role: designer
+        action: propose_practical
+        prompt: planner_practical_system.md
+      - role: designer
+        action: propose_user
+        prompt: planner_user_system.md
+      # --- 2人のレビューワー ---
+      - role: reviewer
+        action: compare
+        prompt: reviewer_comparison_system.md
+      - role: reviewer
+        action: feasibility
+        prompt: reviewer_feasibility_system.md
+
+# =============================================================================
+# ループの仕組み:
+#
+#   試行1: プランナー3人が提案 → レビューワー2人がフィードバック（pass: false）
+#   試行2: プランナー3人がフィードバックを元に改善 → レビューワー2人が再評価
+#   試行3: プランナー3人が最終案を作成 → レビューワー2人が最終評価
+#
+# max_retries で回数を調整できる。
+# confidence_step: 0 にしているので、閾値は固定で毎回しっかりレビューされる。
+# =============================================================================
