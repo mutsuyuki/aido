@@ -5,14 +5,14 @@
 # 既知の問題を --input で指定し、修正 → テスト → レビューを1フェーズで行う。
 #
 # 使い方:
-#   python main.py run workspace/settings/my-app/fix.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 #     --input "ログインページで500エラーが出る"
-#   python main.py run workspace/settings/my-app/fix.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 #     --input-file bugfix.md
 
 project:
   name: "My App - Fix"
-  work_dir: "../../projects/my-app"  # ← プロジェクトに合わせて変更
+  work_dir: "../work"                # ← プロジェクトに合わせて変更
 
 generation:
   default_backend: "gemini"

@@ -7,14 +7,14 @@
 # max_retries がブラッシュアップの回数になる。
 #
 # 使い方:
-#   python main.py run workspace/settings/my-app/plan.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
 #     --input "ローカルLLMを活用した個人向けアプリを企画して"
-#   python main.py run workspace/settings/my-app/plan.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
 #     --input-file idea.md
 
 project:
   name: "My App - Plan"
-  work_dir: "../../projects/my-app"  # ← 企画書の出力先
+  work_dir: "../work"                # ← 企画書の出力先
 
 generation:
   default_backend: "gemini"

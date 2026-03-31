@@ -4,11 +4,11 @@
 #
 # 使い方:
 #   1. テンプレートをコピー:
-#      python main.py init workspace/settings/<プロジェクト名>
+#      python main.py init workspace/<プロジェクト名>/settings
 #   2. このファイルと context/app_spec.md を編集
 #   3. 実行:
-#      python main.py run workspace/settings/<プロジェクト名>/project.yaml --auto-approve
-#      python main.py run workspace/settings/<プロジェクト名>/project.yaml --dry-run
+#      python main.py run workspace/<プロジェクト名>/settings/project.yaml --auto-approve
+#      python main.py run workspace/<プロジェクト名>/settings/project.yaml --dry-run
 #
 # ディレクトリ構成:
 #   (repo root)/
@@ -16,20 +16,19 @@
 #     src/                         ← フレームワーク本体
 #     prompts/                     ← デフォルトプロンプト
 #     workspace/
-#       settings/
-#         my-app/                  ← このファイルのコピー先
+#       my-app/                    ← プロジェクト単位のディレクトリ
+#         settings/                ← このファイルのコピー先
 #           project.yaml
 #           context/app_spec.md    ← アプリ仕様書
 #           prompts/               ← ロールプロンプト上書き用（任意）
-#       projects/
-#         my-app/                  ← work_dir（生成物の出力先）
-#       runs/
-#         my-app/                  ← 実行ログ（自動生成）
+#         work/                    ← work_dir（生成物の出力先）
+#         runs/                    ← 実行ログ（自動生成）
+#         docker/                  ← プロジェクト固有 Dockerfile（任意）
 
 # --- プロジェクト基本情報 ---
 project:
   name: "My App"                   # プロジェクト名（ログ表示用）
-  work_dir: "../../projects/my-app"  # 生成物の出力先（この yaml からの相対パス）
+  work_dir: "../work"                # 生成物の出力先（この yaml からの相対パス）
 
 # --- AI 全体設定 ---
 generation:

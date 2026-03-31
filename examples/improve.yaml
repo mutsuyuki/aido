@@ -6,14 +6,14 @@
 # 「何をするか」は --input で実行時に指定する。
 #
 # 使い方:
-#   python main.py run workspace/settings/my-app/improve.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
 #     --input "テストカバレッジを増やして"
-#   python main.py run workspace/settings/my-app/improve.yaml --auto-approve \
+#   python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
 #     --input "気の利いた機能を1つ企画して追加して"
 
 project:
   name: "My App - Improve"
-  work_dir: "../../projects/my-app"  # ← プロジェクトに合わせて変更
+  work_dir: "../work"                # ← プロジェクトに合わせて変更
 
 generation:
   default_backend: "gemini"

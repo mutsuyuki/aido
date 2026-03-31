@@ -13,11 +13,11 @@ PROJECT_NAME="${1:-}"
 
 # イメージ名の決定
 if [ -n "${PROJECT_NAME}" ]; then
-    PROJECT_DOCKERFILE="$(pwd)/workspace/docker/${PROJECT_NAME}/Dockerfile"
+    PROJECT_DOCKERFILE="$(pwd)/workspace/${PROJECT_NAME}/docker/Dockerfile"
     if [ ! -f "${PROJECT_DOCKERFILE}" ]; then
         echo "エラー: ${PROJECT_DOCKERFILE} が見つかりません"
         echo "利用可能なプロジェクト:"
-        ls -d workspace/docker/*/ 2>/dev/null | xargs -I{} basename {}
+        ls -d workspace/*/docker/ 2>/dev/null | cut -d/ -f2
         exit 1
     fi
     IMAGE_REPOSITORY="aido-${PROJECT_NAME}"
@@ -141,6 +141,13 @@ fi
 if [ -e "${HOME}/.Xauthority" ]; then
     DOCKER_RUN_OPTS+=(
         --mount="type=bind,src=${HOME}/.Xauthority,dst=${HOME}/.Xauthority"
+    )
+fi
+
+# mDNS (.local) 名前解決用（ホストの avahi-daemon ソケットを共有）
+if [ -e "/var/run/avahi-daemon/socket" ]; then
+    DOCKER_RUN_OPTS+=(
+        --mount="type=bind,src=/var/run/avahi-daemon/socket,dst=/var/run/avahi-daemon/socket"
     )
 fi
 

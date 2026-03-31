@@ -36,7 +36,8 @@ RUN apt-get update && \
       tree \
       zip \
       unzip \
-      jq
+      jq \
+      libnss-mdns
 
 # Japanese environment
 ENV LANGUAGE=ja_JP.UTF-8

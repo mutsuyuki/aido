@@ -289,9 +289,9 @@ def run_pipeline(
             shutil.copy2(src, dst)
             print(f"  Copied {ignore_file} to {work_dir}")
 
-    # runs/ は workspace/runs/<settings_dir_name>/ に保存
-    # project_dir = workspace/settings/gemma-chat/ → .parent = settings/ → .parent = workspace/
-    runs_base = project_dir.parent.parent / "runs" / project_dir.name
+    # runs/ は workspace/<project>/runs/ に保存
+    # project_dir = workspace/gemma-chat/settings/ → .parent = workspace/gemma-chat/
+    runs_base = project_dir.parent / "runs"
     run_dir = runs_base / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
 

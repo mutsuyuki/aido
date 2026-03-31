@@ -4,16 +4,16 @@ aido - AI Development Orchestrator
 
 使い方:
   # プロジェクトの初期化（テンプレートをコピー）
-  python main.py init workspace/settings/my-app
+  python main.py init workspace/my-app/settings
 
   # パイプライン実行
-  python main.py run workspace/settings/my-app/project.yaml --auto-approve
-  python main.py run workspace/settings/my-app/project.yaml --dry-run
-  python main.py run workspace/settings/my-app/project.yaml --only phase_01 phase_02
+  python main.py run workspace/my-app/settings/project.yaml --auto-approve
+  python main.py run workspace/my-app/settings/project.yaml --dry-run
+  python main.py run workspace/my-app/settings/project.yaml --only phase_01 phase_02
 
   # 改善・修正サイクル
-  python main.py run workspace/settings/my-app/improve.yaml --auto-approve --input "機能を追加して"
-  python main.py run workspace/settings/my-app/fix.yaml --auto-approve --input "バグを直して"
+  python main.py run workspace/my-app/settings/improve.yaml --auto-approve --input "機能を追加して"
+  python main.py run workspace/my-app/settings/fix.yaml --auto-approve --input "バグを直して"
 """
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def main():
 
     # init サブコマンド
     init_parser = subparsers.add_parser("init", help="プロジェクトを初期化（テンプレートをコピー）")
-    init_parser.add_argument("dest", help="プロジェクトフォルダのパス（例: workspace/settings/my-app）")
+    init_parser.add_argument("dest", help="プロジェクトフォルダのパス（例: workspace/my-app/settings）")
 
     # run サブコマンド
     run_parser = subparsers.add_parser("run", help="パイプラインを実行")

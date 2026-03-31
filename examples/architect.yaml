@@ -8,11 +8,11 @@
 # plan.yaml → architect.yaml → fix.yaml / improve.yaml の順で使う。
 #
 # 使い方:
-#   python main.py run workspace/settings/my-app/architect.yaml --auto-approve
+#   python main.py run workspace/my-app/settings/architect.yaml --auto-approve
 
 project:
   name: "My App - Architecture"
-  work_dir: "../../projects/my-app"  # ← plan.yaml と同じワークディレクトリ
+  work_dir: "../work"                # ← plan.yaml と同じワークディレクトリ
 
 generation:
   default_backend: "gemini"
