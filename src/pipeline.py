@@ -13,7 +13,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from src.ai_backend import SessionManager
+from src.ai_backend import FallbackRule, SessionManager
 from src.config import (
     resolve_prompt,
     resolve_context_files,
@@ -312,6 +312,19 @@ def run_pipeline(
             resume_run_dir = candidate
             print(f"  Resume run: {resume_run_dir}")
 
+    # フォールバックルールの読み込み
+    fallback_rules_raw = gen.get("fallbacks", {})
+    fallback_rules: dict[str, list[FallbackRule]] = {}
+    for role_name, rules in fallback_rules_raw.items():
+        fallback_rules[role_name] = [
+            FallbackRule(
+                error_patterns=r.get("error_patterns", []),
+                fallback_backend=r["fallback_backend"],
+                fallback_model=r["fallback_model"],
+            )
+            for r in rules
+        ]
+
     # SessionManager をロールごとに作成
     session_managers: dict[str, SessionManager] = {}
     for role_name, rcfg in role_configs.items():
@@ -320,6 +333,7 @@ def run_pipeline(
             model=rcfg["model"],
             timeout_sec=rcfg["timeout_sec"],
             permission_mode=rcfg["permission_mode"],
+            fallbacks=fallback_rules.get(role_name, []),
         )
 
     # システムプロンプトの読み込み（ロール単位）

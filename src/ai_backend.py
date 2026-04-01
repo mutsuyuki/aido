@@ -49,6 +49,14 @@ class SessionInfo:
     call_count: int = 0
 
 
+@dataclass
+class FallbackRule:
+    """フォールバックルール: 特定のエラーパターンで別のバックエンド/モデルに切替える"""
+    error_patterns: list[str]  # stderr に含まれるパターン（いずれか一致でトリガー）
+    fallback_backend: str
+    fallback_model: str
+
+
 # ==========================================
 # 内部ユーティリティ
 # ==========================================
@@ -308,12 +316,17 @@ class SessionManager:
         model: str = "",
         timeout_sec: int = 300,
         permission_mode: str = "dangerously-skip-permissions",
+        fallbacks: list[FallbackRule] | None = None,
     ):
         self.backend = backend
         self.model = model
         self.timeout_sec = timeout_sec
         self.permission_mode = permission_mode
+        self.fallbacks = fallbacks or []
         self._sessions: dict[str, SessionInfo] = {}
+        self._using_fallback: bool = False
+        self._original_backend: str = backend
+        self._original_model: str = model
 
     def call(self, role: str, prompt: str, work_dir: Path) -> AIResult:
         """
@@ -343,6 +356,17 @@ class SessionManager:
         )
 
         if result.returncode != 0:
+            # フォールバック判定
+            fallback = self._check_fallback(result)
+            if fallback:
+                print(f"  [fallback] {self.backend}/{self.model} → {fallback.fallback_backend}/{fallback.fallback_model}")
+                self.backend = fallback.fallback_backend
+                self.model = fallback.fallback_model
+                self._using_fallback = True
+                # セッションをリセットして新しいバックエンドで再実行
+                del self._sessions[role]
+                return self.call(role, prompt, work_dir)
+
             # 失敗したセッションは汚染されている可能性があるためリセット
             # 次回呼び出し時は新規セッションで開始される
             del self._sessions[role]
@@ -357,15 +381,38 @@ class SessionManager:
 
     def call_stateless(self, prompt: str, work_dir: Path) -> AIResult:
         """セッションを引き継がない単発呼び出し（レビュー等に使用）"""
-        return self._dispatch(
+        result = self._dispatch(
             prompt=prompt,
             work_dir=work_dir,
             session_id=None,
             is_resume=False,
         )
 
+        if result.returncode != 0:
+            fallback = self._check_fallback(result)
+            if fallback:
+                print(f"  [fallback] {self.backend}/{self.model} → {fallback.fallback_backend}/{fallback.fallback_model}")
+                self.backend = fallback.fallback_backend
+                self.model = fallback.fallback_model
+                self._using_fallback = True
+                return self.call_stateless(prompt, work_dir)
+
+        return result
+
     def get_session(self, role: str) -> Optional[SessionInfo]:
         return self._sessions.get(role)
+
+    def _check_fallback(self, result: AIResult) -> Optional[FallbackRule]:
+        """結果を検査し、マッチするフォールバックルールがあれば返す"""
+        if self._using_fallback:
+            # 既にフォールバック中なら二重フォールバックしない
+            return None
+        combined = f"{result.stdout}\n{result.stderr}".lower()
+        for rule in self.fallbacks:
+            for pattern in rule.error_patterns:
+                if pattern.lower() in combined:
+                    return rule
+        return None
 
     def _dispatch(
         self,
