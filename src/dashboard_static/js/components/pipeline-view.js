@@ -2,6 +2,8 @@
  * Pipeline overview - vertical phase list with attempts
  */
 import { fetchRun, fetchSettings, fetchSetting } from '../api.js';
+import { esc, formatDuration } from '../utils.js';
+import { statusBadge, sectionTitle, roleTag, stepStatusLine } from '../ui.js';
 import { svgCheck, svgCross } from '../icons.js';
 
 export async function renderPipelineView(container, runId, onPhaseClick) {
@@ -44,11 +46,8 @@ export async function renderPipelineView(container, runId, onPhaseClick) {
   }
 
   // Phase results title
-  const resultsTitle = document.createElement('h3');
-  resultsTitle.className = 'section-title';
   const resultCount = (summary.results || []).length;
-  resultsTitle.textContent = `Results (${resultCount})`;
-  container.appendChild(resultsTitle);
+  container.innerHTML += sectionTitle('Results', resultCount);
 
   // Phase list (vertical)
   const list = document.createElement('div');
@@ -62,7 +61,7 @@ export async function renderPipelineView(container, runId, onPhaseClick) {
   // Issues
   if (summary.issues?.length > 0) {
     const issuesSection = document.createElement('div');
-    issuesSection.innerHTML = '<h3 class="section-title">Tracked Issues</h3>';
+    issuesSection.innerHTML = sectionTitle('Tracked Issues');
     for (const issue of summary.issues) {
       const el = document.createElement('div');
       el.className = 'issue-item';
@@ -79,12 +78,12 @@ function renderPhaseCard(phase, configData, onPhaseClick) {
   card.className = 'phase-card';
 
   // Header
-  const statusClass = phase.status === 'accepted' ? 'badge-accepted' : 'badge-failed';
+  const badge = statusBadge(phase.status);
   const header = document.createElement('div');
   header.className = 'phase-header';
   header.innerHTML = `
     <span>${esc(phase.title || phase.phase_id)}</span>
-    <span class="badge ${statusClass}">${phase.status}</span>
+    ${badge}
   `;
   card.appendChild(header);
 
@@ -99,11 +98,7 @@ function renderPhaseCard(phase, configData, onPhaseClick) {
     row.className = `attempt-row attempt-${decision}`;
 
     const totalSec = (attempt.steps || []).reduce((sum, s) => sum + (s.elapsed_sec || 0), 0);
-
-    const stepIcons = (attempt.steps || []).map(s => {
-      const ok = s.success && !(s.parsed && s.parsed.pass === false);
-      return `<span class="step-status" title="${s.role}/${s.action}">${esc(s.role)}:${ok ? svgCheck() : svgCross()}</span>`;
-    }).join(`<span class="step-arrow">\u203A</span>`);
+    const stepIcons = stepStatusLine(attempt.steps || []);
 
     row.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -158,7 +153,7 @@ function renderAgentSummary(configData) {
       ? info.fallbacks.map(f => `${f.fallback_backend}/${f.fallback_model}`).join(', ')
       : '-';
     html += `<tr>
-      <td><span class="step-role">${esc(role)}</span></td>
+      <td>${roleTag(role)}</td>
       <td>${isShell ? 'shell' : esc(info.backend)}</td>
       <td>${isShell ? '(commands)' : esc(info.model)}</td>
       <td>${isShell ? '-' : esc(info.session)}</td>
@@ -169,20 +164,4 @@ function renderAgentSummary(configData) {
   html += '</tbody></table>';
   card.innerHTML = html;
   return card;
-}
-
-
-function formatDuration(sec) {
-  if (sec < 60) return `${sec.toFixed(0)}s`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}m${s}s`;
-}
-
-
-function esc(str) {
-  if (str == null) return '';
-  const div = document.createElement('div');
-  div.textContent = String(str);
-  return div.innerHTML;
 }

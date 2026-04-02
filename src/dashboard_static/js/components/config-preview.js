@@ -2,11 +2,13 @@
  * Config preview - shows YAML configuration, agent assignments, phase structure
  */
 import { fetchSetting } from '../api.js';
+import { esc } from '../utils.js';
+import { card, errorCard, sectionTitle, roleTag, infoTable } from '../ui.js';
 
 export async function renderConfigPreview(container, name) {
   const configData = await fetchSetting(name);
   if (!configData || configData.error) {
-    container.innerHTML = `<div class="card"><p style="color:var(--red)">Failed to load: ${name}</p></div>`;
+    container.innerHTML = errorCard(`Failed to load: ${name}`);
     return;
   }
 
@@ -15,17 +17,15 @@ export async function renderConfigPreview(container, name) {
   infoCard.className = 'card';
   infoCard.innerHTML = `
     <div class="card-title" style="margin-bottom:8px;">${esc(configData.project_name || name)}</div>
-    <table class="agent-table">
-      <tbody>
-        <tr><td style="width:160px;color:var(--text2)">Config File</td><td>${esc(configData.config_file || name)}</td></tr>
-        <tr><td style="color:var(--text2)">Work Dir</td><td>${esc(configData.work_dir)}</td></tr>
-        <tr><td style="color:var(--text2)">Default Backend</td><td>${esc(configData.generation?.default_backend)} / ${esc(configData.generation?.default_model)}</td></tr>
-        <tr><td style="color:var(--text2)">Max Retries</td><td>${configData.generation?.max_retries}</td></tr>
-        <tr><td style="color:var(--text2)">Stop on Failure</td><td>${configData.generation?.stop_on_failure ? 'Yes' : 'No'}</td></tr>
-        <tr><td style="color:var(--text2)">Leader</td><td>${configData.generation?.use_leader ? 'ON' : 'OFF'}</td></tr>
-        <tr><td style="color:var(--text2)">Confidence</td><td>${configData.generation?.confidence_threshold}% (+${configData.generation?.confidence_step}% per retry)</td></tr>
-      </tbody>
-    </table>
+    ${infoTable([
+      ['Config File', esc(configData.config_file || name)],
+      ['Work Dir', esc(configData.work_dir)],
+      ['Default Backend', `${esc(configData.generation?.default_backend)} / ${esc(configData.generation?.default_model)}`],
+      ['Max Retries', configData.generation?.max_retries],
+      ['Stop on Failure', configData.generation?.stop_on_failure ? 'Yes' : 'No'],
+      ['Leader', configData.generation?.use_leader ? 'ON' : 'OFF'],
+      ['Confidence', `${configData.generation?.confidence_threshold}% (+${configData.generation?.confidence_step}% per retry)`],
+    ])}
   `;
   container.appendChild(infoCard);
 
@@ -44,10 +44,7 @@ export async function renderConfigPreview(container, name) {
   container.appendChild(renderAgentMatrix(configData));
 
   // Phases
-  const phasesTitle = document.createElement('h3');
-  phasesTitle.className = 'section-title';
-  phasesTitle.textContent = `Phases (${configData.phases?.length || 0})`;
-  container.appendChild(phasesTitle);
+  container.innerHTML += sectionTitle('Phases', configData.phases?.length || 0);
 
   const phasesWrap = document.createElement('div');
   phasesWrap.style.cssText = 'max-width:960px;margin:0 auto;';
@@ -63,8 +60,8 @@ export async function renderConfigPreview(container, name) {
 
 
 function renderAgentMatrix(configData) {
-  const card = document.createElement('div');
-  card.className = 'card';
+  const el = document.createElement('div');
+  el.className = 'card';
 
   let html = '<div class="card-title" style="margin-bottom:8px;">Agent Assignment Matrix</div>';
   html += '<table class="agent-table"><thead><tr>';
@@ -90,7 +87,7 @@ function renderAgentMatrix(configData) {
       html += `<tr>
         ${i === 0 ? `<td rowspan="${steps.length}" style="vertical-align:top;font-weight:600;">${esc(phase.title || phase.id)}</td>` : ''}
         <td>${esc(step.action)}</td>
-        <td><span class="step-role">${esc(step.role)}</span></td>
+        <td>${roleTag(step.role)}</td>
         <td>${backendModel}</td>
         <td>${isShell ? '-' : esc(step.session)}</td>
         <td>${fb}</td>
@@ -99,14 +96,14 @@ function renderAgentMatrix(configData) {
   }
 
   html += '</tbody></table>';
-  card.innerHTML = html;
-  return card;
+  el.innerHTML = html;
+  return el;
 }
 
 
 function renderPhaseConfig(phase) {
-  const card = document.createElement('div');
-  card.className = 'card';
+  const el = document.createElement('div');
+  el.className = 'card';
 
   let html = `<div class="card-header"><div class="card-title">${esc(phase.id)} - ${esc(phase.title)}</div></div>`;
 
@@ -139,14 +136,14 @@ function renderPhaseConfig(phase) {
     const step = phase.steps[i];
     if (i > 0) html += '<span style="color:var(--text2);">&rarr;</span>';
     html += `<span style="padding:5px 10px;background:var(--surface2);border-radius:4px;font-size:13px;">
-      <span class="step-role">${esc(step.role)}</span>/${esc(step.action)}
+      ${roleTag(step.role)}/${esc(step.action)}
       <span style="color:var(--text2);font-size:12px;">(${esc(step.backend)}/${esc(step.model?.split('/').pop())})</span>
     </span>`;
   }
   html += '</div>';
 
-  card.innerHTML = html;
-  return card;
+  el.innerHTML = html;
+  return el;
 }
 
 
@@ -154,9 +151,9 @@ function renderDependencyGraph(phases) {
   const hasDeps = phases.some(p => p.dependencies?.length > 0);
   if (!hasDeps) return null;
 
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = '<div class="card-title" style="margin-bottom:8px;">Dependency Graph</div>';
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = '<div class="card-title" style="margin-bottom:8px;">Dependency Graph</div>';
 
   const graph = document.createElement('div');
   graph.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
@@ -174,14 +171,6 @@ function renderDependencyGraph(phases) {
     graph.appendChild(node);
   }
 
-  card.appendChild(graph);
-  return card;
-}
-
-
-function esc(str) {
-  if (str == null) return '';
-  const div = document.createElement('div');
-  div.textContent = String(str);
-  return div.innerHTML;
+  el.appendChild(graph);
+  return el;
 }

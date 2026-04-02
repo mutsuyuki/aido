@@ -2,6 +2,8 @@
  * Project home - settings list + runs list on a single page
  */
 import { fetchSettings, fetchRuns, fetchStatus } from '../api.js';
+import { esc, formatTimestamp } from '../utils.js';
+import { sectionTitle, sectionDesc, emptyCard, runStatusBadge, miniBar } from '../ui.js';
 
 export async function renderProjectHome(container, { onSelectConfig, onSelectRun }) {
   const [settings, runs, status] = await Promise.all([
@@ -20,12 +22,12 @@ export async function renderProjectHome(container, { onSelectConfig, onSelectRun
   // --- Settings section ---
   const settingsSection = document.createElement('div');
   settingsSection.innerHTML = `
-    <h2 class="section-title">Settings <span style="color:var(--text2);font-size:13px;">(${settings.length})</span></h2>
-    <p class="section-desc">Pipeline configurations — click to preview phases, agent assignments, and constraints</p>
+    ${sectionTitle('Settings', settings.length)}
+    ${sectionDesc('Pipeline configurations — click to preview phases, agent assignments, and constraints')}
   `;
 
   if (settings.length === 0) {
-    settingsSection.innerHTML += '<div class="card"><p style="color:var(--text2)">No settings files found in settings/</p></div>';
+    settingsSection.innerHTML += emptyCard('No settings files found in settings/');
   } else {
     for (const s of settings) {
       const el = document.createElement('div');
@@ -54,12 +56,12 @@ export async function renderProjectHome(container, { onSelectConfig, onSelectRun
   // --- Runs section ---
   const runsSection = document.createElement('div');
   runsSection.innerHTML = `
-    <h2 class="section-title">Runs <span style="color:var(--text2);font-size:13px;">(${runs.length})</span></h2>
-    <p class="section-desc">Pipeline execution history — click to view phase results, attempts, and AI outputs</p>
+    ${sectionTitle('Runs', runs.length)}
+    ${sectionDesc('Pipeline execution history — click to view phase results, attempts, and AI outputs')}
   `;
 
   if (runs.length === 0) {
-    runsSection.innerHTML += '<div class="card"><p style="color:var(--text2)">No runs yet.</p></div>';
+    runsSection.innerHTML += emptyCard('No runs yet.');
   } else {
     for (const run of runs) {
       const isActive = run.id === activeRunId;
@@ -72,23 +74,13 @@ export async function renderProjectHome(container, { onSelectConfig, onSelectRun
       const pending = total - completed - failed;
       const inProgress = run.in_progress || isActive;
 
-      let statusBadge;
-      if (isActive || inProgress) {
-        statusBadge = '<span class="badge badge-running"><span class="live-dot"></span>RUNNING</span>';
-      } else if (failed > 0) {
-        statusBadge = '<span class="badge badge-failed">FAILED</span>';
-      } else if (completed === total && total > 0) {
-        statusBadge = '<span class="badge badge-accepted">DONE</span>';
-      } else {
-        statusBadge = '<span class="badge badge-pending">PENDING</span>';
-      }
-
+      const badge = runStatusBadge({ completed, failed, total, inProgress });
       const ts = formatTimestamp(run.id);
 
       el.innerHTML = `
         <div>
-          <div class="run-id">${ts} ${statusBadge}</div>
-          <div class="run-project">${esc(run.project || run.id)}${renderMiniBar(run.phase_summaries)}</div>
+          <div class="run-id">${ts} ${badge}</div>
+          <div class="run-project">${esc(run.project || run.id)}${miniBar(run.phase_summaries)}</div>
         </div>
         <div class="run-stats">
           <span class="stat-ok">${completed} ok</span>
@@ -103,31 +95,4 @@ export async function renderProjectHome(container, { onSelectConfig, onSelectRun
     }
   }
   columns.appendChild(runsSection);
-}
-
-
-function formatTimestamp(runId) {
-  const m = runId.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
-  if (!m) return runId;
-  return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
-}
-
-
-function renderMiniBar(summaries) {
-  if (!summaries) return '';
-  let html = '<span style="display:inline-flex;gap:2px;margin-left:8px;vertical-align:middle;">';
-  for (const [, info] of Object.entries(summaries)) {
-    const color = info.status === 'accepted' ? 'var(--green)' : info.status === 'failed' ? 'var(--red)' : 'var(--text2)';
-    html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color};" title="${info.status} (${info.attempts} attempts)"></span>`;
-  }
-  html += '</span>';
-  return html;
-}
-
-
-function esc(str) {
-  if (str == null) return '';
-  const div = document.createElement('div');
-  div.textContent = String(str);
-  return div.innerHTML;
 }

@@ -2,6 +2,8 @@
  * Phase detail view - shows attempts, steps, AI output, review issues
  */
 import { fetchPhase } from '../api.js';
+import { esc, formatDuration } from '../utils.js';
+import { badge, issueItem } from '../ui.js';
 
 export async function renderPhaseDetail(container, runId, phaseId, attemptIdx, onBack) {
   const detail = await fetchPhase(runId, phaseId);
@@ -16,7 +18,7 @@ export async function renderPhaseDetail(container, runId, phaseId, attemptIdx, o
   header.innerHTML = `
     <span class="nav-item" id="back-btn" style="cursor:pointer;">< Back</span>
     <span class="section-title" style="display:inline;margin-left:12px;border:none;">
-      ${phaseId}
+      ${esc(phaseId)}
     </span>
   `;
   container.appendChild(header);
@@ -39,7 +41,7 @@ export async function renderPhaseDetail(container, runId, phaseId, attemptIdx, o
     tab.className = `file-tab${i === selectedIdx ? ' active' : ''}`;
     const decision = att.log?.decision || '?';
     const decColor = decision === 'accepted' ? 'var(--green)' : 'var(--red)';
-    tab.innerHTML = `${att.name} <span style="color:${decColor};font-size:10px;">${decision}</span>`;
+    tab.innerHTML = `${esc(att.name)} <span style="color:${decColor};font-size:10px;">${decision}</span>`;
     tab.addEventListener('click', () => {
       container.innerHTML = '';
       renderPhaseDetail(container, runId, phaseId, i, onBack);
@@ -77,9 +79,9 @@ function renderAttemptDetail(container, attempt) {
 
     li.innerHTML = `
       <div class="step-header">
-        <span class="step-role">${step.role}</span>
-        <span>/${step.action}</span>
-        <span class="badge ${isOk ? 'badge-accepted' : 'badge-failed'}">${isOk ? 'OK' : 'NG'}</span>
+        <span class="step-role">${esc(step.role)}</span>
+        <span>/${esc(step.action)}</span>
+        ${badge(isOk ? 'OK' : 'NG', isOk ? 'accepted' : 'failed')}
         <span class="step-time">${duration}${sessionInfo}</span>
       </div>
     `;
@@ -89,19 +91,7 @@ function renderAttemptDetail(container, attempt) {
       const issuesDiv = document.createElement('div');
       issuesDiv.style.cssText = 'margin-top:8px;';
       for (const issue of step.parsed.issues) {
-        const issueEl = document.createElement('div');
-        issueEl.className = 'issue-item';
-        const conf = issue.confidence || '?';
-        const confColor = conf >= 90 ? 'var(--red)' : conf >= 80 ? 'var(--yellow)' : 'var(--text2)';
-        issueEl.innerHTML = `
-          <div>
-            <span class="issue-confidence" style="color:${confColor}">[${conf}]</span>
-            ${escapeHtml(issue.description || '')}
-            ${issue.file ? `<span class="step-time">${escapeHtml(issue.file)}</span>` : ''}
-          </div>
-          ${issue.fix ? `<div class="issue-fix">${escapeHtml(issue.fix)}</div>` : ''}
-        `;
-        issuesDiv.appendChild(issueEl);
+        issuesDiv.innerHTML += issueItem(issue);
       }
       li.appendChild(issuesDiv);
     }
@@ -171,19 +161,4 @@ function renderAttemptDetail(container, attempt) {
     fileCard.appendChild(fileContent);
     container.appendChild(fileCard);
   }
-}
-
-
-function formatDuration(sec) {
-  if (sec < 60) return `${sec.toFixed(1)}s`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}m${s}s`;
-}
-
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
