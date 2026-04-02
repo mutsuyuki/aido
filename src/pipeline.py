@@ -22,6 +22,7 @@ from src.config import (
 )
 from src.models import AttemptLog, PhaseResult, PipelineState
 from src.steps import execute_step
+from src.dashboard import start_dashboard, stop_dashboard
 from src.leader import (
     build_checkpoint_prompt,
     build_plan_review_prompt,
@@ -295,6 +296,19 @@ def run_pipeline(
     run_dir = runs_base / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    # ダッシュボードを非ブロッキングで自動起動
+    config_yaml = config.get("_project_yaml")
+    try:
+        _dashboard_thread = start_dashboard(
+            project_dir=project_dir.parent,  # settings/ の親 = プロジェクトルート
+            active_config_path=Path(config_yaml) if config_yaml else None,
+            open_browser=True,
+            blocking=False,
+        )
+    except Exception as e:
+        print(f"  Dashboard start skipped: {e}")
+        _dashboard_thread = None
+
     # ロール設定の解決（frontmatter マージ対応）
     role_configs = get_role_config(config, project_dir)
     check_config = get_check_config(config, project_dir)
@@ -479,5 +493,11 @@ def run_pipeline(
         for issue in state.issues:
             print(f"  - {issue}")
     print("Done.")
+
+    # ダッシュボードを停止
+    try:
+        stop_dashboard()
+    except Exception:
+        pass
 
     return results
