@@ -2,8 +2,8 @@
  * Phase detail view - shows attempts, steps, AI output, review issues
  */
 import { fetchPhase } from '../api.js';
-import { esc, formatDuration } from '../utils.js';
-import { badge, issueItem } from '../ui.js';
+import { esc, formatDuration } from '../common/utils.js';
+import { badge, issueItem } from '../common/ui.js';
 
 export async function renderPhaseDetail(container, runId, phaseId, attemptIdx, onBack) {
   const detail = await fetchPhase(runId, phaseId);

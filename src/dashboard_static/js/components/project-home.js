@@ -2,8 +2,8 @@
  * Project home - settings list + runs list on a single page
  */
 import { fetchSettings, fetchRuns, fetchStatus } from '../api.js';
-import { esc, formatTimestamp } from '../utils.js';
-import { sectionTitle, sectionDesc, emptyCard, runStatusBadge, miniBar } from '../ui.js';
+import { esc, formatTimestamp } from '../common/utils.js';
+import { sectionTitle, sectionDesc, emptyCard, runStatusBadge, miniBar } from '../common/ui.js';
 
 export async function renderProjectHome(container, { onSelectConfig, onSelectRun }) {
   const [settings, runs, status] = await Promise.all([

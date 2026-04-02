@@ -2,9 +2,8 @@
  * Pipeline overview - vertical phase list with attempts
  */
 import { fetchRun, fetchSettings, fetchSetting } from '../api.js';
-import { esc, formatDuration } from '../utils.js';
-import { statusBadge, sectionTitle, roleTag, stepStatusLine } from '../ui.js';
-import { svgCheck, svgCross } from '../icons.js';
+import { esc, formatDuration } from '../common/utils.js';
+import { statusBadge, sectionTitle, roleTag, stepStatusLine } from '../common/ui.js';
 
 export async function renderPipelineView(container, runId, onPhaseClick) {
   const summary = await fetchRun(runId);

@@ -2,8 +2,8 @@
  * Config preview - shows YAML configuration, agent assignments, phase structure
  */
 import { fetchSetting } from '../api.js';
-import { esc } from '../utils.js';
-import { card, errorCard, sectionTitle, roleTag, infoTable } from '../ui.js';
+import { esc } from '../common/utils.js';
+import { card, errorCard, sectionTitle, roleTag, infoTable } from '../common/ui.js';
 
 export async function renderConfigPreview(container, name) {
   const configData = await fetchSetting(name);

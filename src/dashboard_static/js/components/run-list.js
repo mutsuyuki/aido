@@ -1,8 +1,8 @@
 /**
  * Run list view - shows all available pipeline runs
  */
-import { esc, formatTimestamp } from '../utils.js';
-import { sectionTitle, emptyCard, runStatusBadge, miniBar } from '../ui.js';
+import { esc, formatTimestamp } from '../common/utils.js';
+import { sectionTitle, emptyCard, runStatusBadge, miniBar } from '../common/ui.js';
 
 export function renderRunList(container, runs, onSelect) {
   container.innerHTML = sectionTitle('Pipeline Runs');
