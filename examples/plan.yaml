@@ -20,7 +20,7 @@ generation:
   default_backend: "gemini"
   default_model: "gemini-2.5-pro"
   default_timeout_sec: 600
-  default_permission_mode: "dangerously-skip-permissions"
+  default_permission_mode: "bypassPermissions"
   max_retries: 3                     # ← ブラッシュアップの回数
   stop_on_failure: true
   use_leader: false

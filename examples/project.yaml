@@ -38,7 +38,7 @@ generation:
   default_backend: "gemini"        # claude / gemini / codex
   default_model: "gemini-2.5-pro"
   default_timeout_sec: 600
-  default_permission_mode: "dangerously-skip-permissions"
+  default_permission_mode: "bypassPermissions"
   max_retries: 3                   # 各フェーズの最大リトライ回数
   stop_on_failure: true            # フェーズ失敗時にパイプラインを停止
   use_leader: false                # Leader AI による自律判断（上級者向け）
@@ -121,6 +121,32 @@ checks:
 #     description: |
 #       planフェーズの企画書（PLAN_*.md）を前提に、
 #       モバイルアプリとして実現するための具体的な技術設計を行う。
+#
+# ■ フェーズ設計の原則（重要）
+#   各フェーズ内で「作業 → レビュー → 修正」のループが完結するように設計する。
+#   reviewer が fail を返すとフェーズ内でリトライされ、作業ロール（designer/coder 等）が
+#   修正指示（repair_instructions）を受けて成果物を書き直す。
+#
+#   良い設計（フェーズ内で作業+レビューが完結）:
+#     - id: "architecture"
+#       steps:
+#         - role: designer        # 設計（リトライ時は reviewer の指摘を元に修正）
+#           action: design
+#         - role: reviewer         # レビュー（fail なら designer に差し戻し）
+#           action: review
+#
+#   悪い設計（レビューだけの独立フェーズ）:
+#     - id: "design"
+#       steps:
+#         - role: designer
+#           action: design
+#     - id: "review"              # ← designer がいないのでリトライしても修正されない
+#       steps:
+#         - role: reviewer
+#           action: review
+#
+#   レビューだけのフェーズを作ると、reviewer が fail を返しても成果物が
+#   修正されないまま同じレビューが繰り返されるだけになる。
 #
 # =============================================================================
 

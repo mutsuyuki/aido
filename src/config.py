@@ -177,7 +177,7 @@ def get_role_config(config: dict, project_dir: Path = None) -> dict:
             "backend": gen.get("default_backend", "claude"),
             "model": gen.get("default_model", ""),
             "timeout_sec": gen.get("default_timeout_sec", 300),
-            "permission_mode": gen.get("default_permission_mode", "dangerously-skip-permissions"),
+            "permission_mode": gen.get("default_permission_mode", "bypassPermissions"),
             "session": role_defaults["session"],
             "prompt": role_defaults["prompt"],
         }

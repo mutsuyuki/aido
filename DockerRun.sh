@@ -74,6 +74,21 @@ mkdir -p "$(pwd)/.codex"
 
 if command -v xhost >/dev/null 2>&1; then xhost +; fi
 
+# --- 3b. MCP 設定の同期 (.mcp.json -> .gemini/settings.json) ---
+if [ -f "$(pwd)/.mcp.json" ]; then
+    if [ ! -f "$(pwd)/.gemini/settings.json" ]; then
+        echo "{}" > "$(pwd)/.gemini/settings.json"
+    fi
+    # mcpServers を .mcp.json から .gemini/settings.json にマージ
+    if command -v jq >/dev/null 2>&1; then
+        jq -s '.[0] * .[1]' "$(pwd)/.gemini/settings.json" "$(pwd)/.mcp.json" > "$(pwd)/.gemini/settings.tmp.json" && \
+        mv "$(pwd)/.gemini/settings.tmp.json" "$(pwd)/.gemini/settings.json"
+        echo "  Synced .mcp.json -> .gemini/settings.json"
+    else
+        echo "  Warning: jq not found, skipping .mcp.json -> .gemini/settings.json sync"
+    fi
+fi
+
 # --- 4. 実行オプションの構築（共通部分） ---
 DOCKER_RUN_OPTS=(
     --interactive
@@ -88,6 +103,7 @@ DOCKER_RUN_OPTS=(
     --env="PULSE_SERVER=${PULSE_SERVER}"
     --env="COLORTERM=truecolor"
     --env-file="$(pwd)/.env"
+    --env="MCP_HOST_HOME=${HOME}"
     --mount="type=bind,src=$(pwd),dst=${HOME}/share"
     --mount="type=bind,src=$(pwd)/.gemini,dst=${HOME}/.gemini"
     --mount="type=bind,src=$(pwd)/.claude,dst=${HOME}/.claude"
@@ -128,11 +144,6 @@ if [ "${HOST_OS_TYPE}" = "Linux" ]; then
 fi
 
 # 存在する場合のみマウントするファイル群（LinuxのGUI / オーディオ等）
-if [ -e "/tmp/.X11-unix" ]; then
-    DOCKER_RUN_OPTS+=(
-        --mount="type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly"
-    )
-fi
 if [ -e "/run/dbus/system_bus_socket" ]; then
     DOCKER_RUN_OPTS+=(
         --mount="type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket"
@@ -141,6 +152,23 @@ fi
 if [ -e "${HOME}/.Xauthority" ]; then
     DOCKER_RUN_OPTS+=(
         --mount="type=bind,src=${HOME}/.Xauthority,dst=${HOME}/.Xauthority"
+    )
+fi
+
+# Unity MCP relay 用マウント（~/.unity にリレーバイナリと設定がある）
+if [ -d "${HOME}/.unity" ]; then
+    DOCKER_RUN_OPTS+=(
+        --mount="type=bind,src=${HOME}/.unity,dst=${HOME}/.unity"
+    )
+    echo "  Mounted ${HOME}/.unity for Unity MCP relay"
+fi
+
+# /tmp マウント（X11 ソケット + Unity ソケット用）
+# relay_linux は Unix ソケット（/tmp/unity-* 等）で Unity Editor と通信する
+# /tmp 丸ごとマウントで /tmp/.X11-unix も含む
+if [ -e "/tmp" ]; then
+    DOCKER_RUN_OPTS+=(
+        --mount="type=bind,src=/tmp,dst=/tmp"
     )
 fi
 

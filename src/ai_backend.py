@@ -315,7 +315,7 @@ class SessionManager:
         backend: str = "claude",
         model: str = "",
         timeout_sec: int = 300,
-        permission_mode: str = "dangerously-skip-permissions",
+        permission_mode: str = "bypassPermissions",
         fallbacks: list[FallbackRule] | None = None,
     ):
         self.backend = backend

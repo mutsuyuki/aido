@@ -84,11 +84,14 @@ def parse_config_for_preview(config: dict) -> dict:
             rcfg = role_configs.get(role, {})
             fb = fallbacks.get(role, [])
 
+            # step-level override があればそちらを優先表示
+            effective_backend = step.get("backend") or rcfg.get("backend", "?")
+            effective_model = step.get("model") or rcfg.get("model", "?")
             step_info = {
                 "role": role,
                 "action": action,
-                "backend": rcfg.get("backend", "?"),
-                "model": rcfg.get("model", "?"),
+                "backend": effective_backend,
+                "model": effective_model,
                 "session": rcfg.get("session", "?"),
                 "timeout_sec": rcfg.get("timeout_sec", 300),
                 "fallbacks": [

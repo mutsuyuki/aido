@@ -377,7 +377,7 @@ def execute_step(
             backend=effective_backend,
             model=effective_model,
             timeout_sec=role_cfg.get("timeout_sec", 300),
-            permission_mode=role_cfg.get("permission_mode", "dangerously-skip-permissions"),
+            permission_mode=role_cfg.get("permission_mode", "bypassPermissions"),
         )
         print(f"  [{role}/{action}] step-level override: {effective_backend}/{effective_model}")
     else:

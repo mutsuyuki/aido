@@ -104,33 +104,45 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 | **checker** | - | 機械検査（非AI。lint, compile, test 実行） |
 | **human** | - | ユーザー確認ポイント（非AI） |
 
+## フェーズ設計の原則
+
+各フェーズ内で「作業 → レビュー → 修正」のループが完結するように設計する。reviewer が fail を返すとフェーズ内でリトライされ、作業ロール（designer/coder 等）が修正指示を受けて成果物を書き直す。
+
+```yaml
+# 良い設計: 作業 + レビューが同じフェーズ内で完結
+- id: "architecture"
+  steps:
+    - role: designer          # リトライ時は reviewer の指摘を元に修正
+      action: design
+    - role: reviewer          # fail なら designer に差し戻し
+      action: review
+```
+
+レビューだけの独立フェーズを作ると、reviewer が fail を返しても成果物が修正されないまま同じレビューが繰り返される。
+
 ## Step 単位のバックエンド上書き
 
 `roles` セクションでロール単位にバックエンド・モデルを設定するのが基本だが、step に `backend` / `model` を指定すると、その step だけ別のバックエンドで実行できる。セッションは引き継がない（stateless）。
 
 ```yaml
-roles:
-  reviewer:
-    backend: "gemini"
-    model: "gemini-2.5-pro"
-
 phases:
-  - id: "review"
+  - id: "architecture"
     steps:
+      - role: designer
+        action: design
       - role: reviewer
         action: review
         prompt: reviewer_feasibility.md
-        # → gemini で実行（roles の設定通り）
-
+        # → roles.reviewer の設定（gemini）を使う
       - role: reviewer
         action: review
-        prompt: reviewer_demo_quality.md
+        prompt: reviewer_feasibility.md
         backend: codex
         model: gpt-5.4
         # → この step だけ codex で実行
 ```
 
-これにより、同じレビューフェーズ内で異なる AI の視点を組み合わせられる。
+これにより、同じフェーズ内で異なる AI の視点を組み合わせたレビューができる。
 
 ## Contract と Failure Taxonomy
 
