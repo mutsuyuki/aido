@@ -22,6 +22,18 @@ class StepResult:
     # checker の stdout/stderr（構造化フィードバック用）
     checker_stdout: str = ""
     checker_stderr: str = ""
+    # AI呼び出しがタイムアウトしたか
+    timed_out: bool = False
+
+
+@dataclass
+class ContractViolation:
+    """Contract 違反の事実記録（失敗タイプの決定前）"""
+    fact: str       # "checker_nonzero", "forbidden_pattern", "confidence_below_min",
+                    # "required_file_missing", "timeout", "session_error"
+    detail: str = ""
+    pattern: str = ""
+    file: str = ""
 
 
 @dataclass
@@ -30,6 +42,10 @@ class AttemptLog:
     attempt: int
     steps: list[StepResult] = field(default_factory=list)
     decision: str = ""  # "accepted", "failed_step", "failed_review", etc.
+    # Contract / Failure Taxonomy 記録
+    contract_violations: list[ContractViolation] = field(default_factory=list)
+    failure_type: str = ""      # "checker_error", "reviewer_rejection", "timeout", "missing_artifact", ""
+    strategy_applied: str = ""  # "retry_coder", "retry_with_confidence_step", "session_reset_and_retry", "abort", ""
 
 
 @dataclass

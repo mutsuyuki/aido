@@ -80,6 +80,7 @@ def _call_ai_step(
             role=role, action=action, success=False, elapsed_sec=elapsed,
             session_id=result.session_id, output=result.stderr[:500],
             failures=[f"AI call failed (exit={result.returncode}): {result.stderr[:200]}"],
+            timed_out=result.timed_out,
         )
 
     # reviewer/leader のJSONパース
@@ -402,6 +403,11 @@ def execute_step(
         filtered = result.parsed.get("_filtered_count", 0)
         if filtered > 0:
             print(f"  [{role}/{action}] {filtered}件の低confidence issueを除外")
+
+        # reviewer の pass=false を success=false に統一
+        # pipeline.py での二重チェックを不要にする
+        if result.parsed.get("pass") is False:
+            result.success = False
 
     if result.success:
         print(f"  [{role}/{action}] 完了 ({result.elapsed_sec}s)")

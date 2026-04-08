@@ -25,6 +25,9 @@
 #         runs/                    ← 実行ログ（自動生成）
 #         docker/                  ← プロジェクト固有 Dockerfile（任意）
 
+# --- スキーマバージョン ---
+schema_version: "1.0"               # 後方互換管理用（未指定なら旧フォーマット扱い）
+
 # --- プロジェクト基本情報 ---
 project:
   name: "My App"                   # プロジェクト名（ログ表示用）
@@ -41,6 +44,14 @@ generation:
   use_leader: false                # Leader AI による自律判断（上級者向け）
   confidence_threshold: 80         # reviewer の confidence フィルタ閾値
   confidence_step: 5               # リトライごとの閾値増分（80→85→90→...→100）
+
+  # --- 失敗分類と回復戦略（グローバルデフォルト。phase 単位で上書き可） ---
+  # 省略時は従来の max_retries + stop_on_failure 挙動にフォールバック
+  failure_taxonomy:
+    checker_error:        retry_coder                # checker stdout を coder に渡してリトライ
+    reviewer_rejection:   retry_with_confidence_step  # confidence 閾値を上げてリトライ
+    timeout:              session_reset_and_retry     # セッション破棄 → 新規リトライ
+    missing_artifact:     abort                       # パイプライン停止
 
 # --- ロール別設定（省略時は generation のデフォルトを使用） ---
 roles:
@@ -65,14 +76,58 @@ roles:
 checks:
   commands:
     - "echo 'TODO: プロジェクトに合わせて検査コマンドを設定'"
-    # 例: Python の構文チェック
-    # - "cd /path/to/work_dir && python -c \"import py_compile, glob; [py_compile.compile(f, doraise=True) for f in glob.glob('**/*.py', recursive=True)]\""
-    # 例: pytest
-    # - "cd /path/to/work_dir && python -m pytest tests/ -x"
+    # --- 実プロジェクトでの設定例 ---
+    # Python:
+    #   - "cd /path/to/work && python -c \"import py_compile, glob; [py_compile.compile(f, doraise=True) for f in glob.glob('**/*.py', recursive=True)]\""
+    # Flutter:
+    #   - "cd /path/to/work && flutter analyze --no-fatal-infos"
+    # Flutter + Freezed (コード生成が必要な場合):
+    #   - "cd /path/to/work && dart run build_runner build --delete-conflicting-outputs"
+    #   - "cd /path/to/work && flutter analyze --no-fatal-infos"
 
-# --- フェーズ定義 ---
-# 上から順に実行される。各フェーズ内の steps も上から順に実行。
+# =============================================================================
+# フェーズ定義
+# =============================================================================
+#
+# ■ tasks の書き方（最重要）
+#   AI は tasks に書かれた内容をそのまま作業指示として受け取る。
+#   具体的なファイル名・クラス名・メソッド名まで書くと成果物が安定する。
+#
+#   良い例:
+#     - "models.py に Transaction, Category のデータクラスとCRUD関数を実装"
+#     - "lib/models/app_user.dart に AppUser クラスを実装（toMap/fromMap/copyWith）"
+#     - "pubspec.yaml に flutter_riverpod, go_router, dio を追加"
+#     - "app/android/app/build.gradle の applicationId を com.example.myapp に変更"
+#
+#   悪い例:
+#     - "モデルを作る"              （何を作るか不明）
+#     - "データベースを設計"         （ファイル名も構造も不明）
+#     - "必要なパッケージを追加"     （何を追加するか不明）
+#
+# ■ constraints の書き方
+#   AI が守るべき制約を明示する。技術選定・禁止事項・コーディング規約など。
+#
+#   良い例:
+#     - "ORM は使わず sqlite3 モジュールを直接使用"
+#     - "import は package:my_app/... 形式で統一（相対 import 禁止）"
+#     - "既存の import 文は変更不要"
+#     - "秘密鍵や keystore ファイルを git にコミットしないこと"
+#
+# ■ description の書き方
+#   フェーズ全体の目的を1〜3文で。複数行にする場合は | を使う。
+#
+#   良い例:
+#     description: "モデルクラスとサービスの抽象インターフェース・実装を作成する"
+#     description: |
+#       planフェーズの企画書（PLAN_*.md）を前提に、
+#       モバイルアプリとして実現するための具体的な技術設計を行う。
+#
+# =============================================================================
+
 phases:
+  # -------------------------------------------------------
+  # Phase 1: 設計
+  # -------------------------------------------------------
   - id: "phase_01"
     title: "プロジェクト構造設計"
     description: "アプリのディレクトリ構造とファイル構成を設計する"
@@ -80,10 +135,22 @@ phases:
       - "ディレクトリ構造を設計"
       - "必要なファイル一覧と各ファイルの責務を定義"
       - "設計結果を DESIGN.md としてワークディレクトリに保存"
+      # --- tasks の具体化例（実プロジェクトではこのレベルまで書く）---
+      # - "app_spec.md のディレクトリ構成に従った詳細設計を作成"
+      # - "各ファイルの責務・クラス名・主要メソッドを定義"
+      # - "go_router のルート定義と認証ガードの設計を含める"
+    contract:
+      required_files:
+        - "DESIGN.md"
+    outputs:
+      - "DESIGN.md"
     steps:
       - role: designer
         action: design
 
+  # -------------------------------------------------------
+  # Phase 2: データモデル
+  # -------------------------------------------------------
   - id: "phase_02"
     title: "データモデル実装"
     description: "データモデルとDB初期化を実装する"
@@ -92,20 +159,63 @@ phases:
     tasks:
       - "データモデルを実装"
       - "DB 初期化処理を実装"
+      # --- tasks の具体化例 ---
+      # - "models.py にデータモデル (Transaction, Category) を実装"
+      # - "database.py に DB 初期化とデフォルトカテゴリ投入を実装"
+      # - "requirements.txt を作成"
+      # --- Flutter の場合 ---
+      # - "lib/models/ に AppUser, ChatSession, ChatMessage を実装"
+      # - "各モデルに toMap / fromMap / copyWith メソッドを含める"
+      # - "firebase_core, cloud_firestore を pubspec.yaml に追加"
+    constraints: []
+      # --- constraints の例 ---
+      # - "ORM は使わず sqlite3 モジュールを直接使用"
+      # - "import は package:my_app/... 形式で統一"
+      # - "flutter analyze が通ること"
+    contract:
+      checker_must_pass: true
+      forbidden_patterns:
+        - "TODO:"
     steps:
       - role: coder
         action: implement
       - role: checker
         action: run_checks
 
+  # -------------------------------------------------------
+  # Phase 3: メイン機能
+  # -------------------------------------------------------
   - id: "phase_03"
     title: "メイン機能の実装"
     description: "アプリのメイン機能を実装する"
     dependencies:
       - "phase_02: データモデル実装"
+    tasks:
+      - "メイン機能を実装"
+      # --- tasks の具体化例 (Python Web) ---
+      # - "app.py に Flask アプリケーションとルートを実装"
+      # - "templates/ に Jinja2 テンプレートを作成 (base.html, index.html, form.html)"
+      # - "static/ に CSS と Chart.js 連携の JS を配置"
+      # --- tasks の具体化例 (Flutter) ---
+      # - "lib/features/auth/screens/login_screen.dart にログイン画面"
+      # - "lib/features/chat/widgets/ に MessageBubble, ChatInput を実装"
+      # - "lib/core/router/app_router.dart に go_router ルート定義"
+    constraints: []
+      # - "Bootstrap 5 を CDN で読み込む"
+      # - "カード型UIで直感的に操作できること"
+      # - "認証状態に応じて /login または /home にリダイレクト"
     review_checklist:
       - "設計通りに実装されていること"
       - "エラーハンドリングが適切であること"
+      # --- review_checklist の例 ---
+      # - "全てのルートが正しく動作すること"
+      # - "全画面が go_router のルートに正しく接続されていること"
+      # - "Riverpod プロバイダーの依存関係が正しいこと"
+    contract:
+      checker_must_pass: true
+      reviewer_confidence_min: 80
+      forbidden_patterns:
+        - "TODO:"
     steps:
       - role: coder
         action: implement
@@ -114,11 +224,31 @@ phases:
       - role: reviewer
         action: review
 
+  # -------------------------------------------------------
+  # Phase 4: テスト
+  # -------------------------------------------------------
   - id: "phase_04"
     title: "テスト作成"
     description: "E2E テストまたはユニットテストを作成する"
     dependencies:
       - "phase_03: メイン機能の実装"
+    tasks:
+      - "テストを作成"
+      # --- tasks の具体化例 (Python) ---
+      # - "tests/conftest.py に Flask テストサーバーの fixture を作成"
+      # - "tests/test_e2e.py に Playwright テストを作成"
+      # - "テスト項目: 画面表示、収支登録、一覧反映、削除、月次サマリー"
+      # --- tasks の具体化例 (Flutter) ---
+      # - "サービスのモッククラスを作成"
+      # - "test/features/auth/ にログイン・登録画面のテスト"
+      # - "テスト項目: 画面表示、フォーム入力、ボタン操作、エラー表示"
+    # --- フェーズ固有の checks でテスト実行を追加する例 ---
+    # checks:
+    #   commands:
+    #     - "cd /path/to/work && python -m pytest tests/ -x --timeout=30"
+    #     - "cd /path/to/work && flutter test"
+    contract:
+      checker_must_pass: true
     steps:
       - role: tester
         action: write_tests
@@ -141,9 +271,16 @@ phases:
 #   - role: human        # ユーザー確認（action: approve）
 #
 # ■ Step 単位でプロンプトを上書き（観点別レビュー等）:
-#   - role: reviewer
-#     action: review
-#     prompt: reviewer_security.md   # prompts/ 内のファイル名
+#   steps:
+#     - role: designer
+#       action: design_backend
+#       prompt: architect_backend_system.md
+#     - role: designer
+#       action: design_mobile
+#       prompt: architect_mobile_system.md
+#     - role: reviewer
+#       action: review_architecture
+#       prompt: reviewer_architecture_system.md
 #
 # ■ AIの代わりに人間が作業:
 #   - role: coder
@@ -155,6 +292,34 @@ phases:
 #     checks:
 #       commands:
 #         - "cd /path/to/app && python -m pytest tests/ -x"
+#
+# ■ contract（phase の合格条件。省略可）:
+#   contract:
+#     checker_must_pass: true          # checker 非ゼロ終了で phase 失敗
+#     reviewer_confidence_min: 80      # reviewer の最低 confidence 閾値
+#     required_files:                  # phase 完了時に存在を検証（glob 可）
+#       - "src/**/*.py"
+#     forbidden_patterns:              # outputs/required_files 内を検索
+#       - "TODO:"
+#
+# ■ failure_taxonomy（失敗分類。generation で全体デフォルト、phase で上書き可）:
+#   failure_taxonomy:
+#     checker_error:        retry_coder
+#     reviewer_rejection:   retry_with_confidence_step
+#     timeout:              session_reset_and_retry
+#     missing_artifact:     abort
+#
+# ■ outputs（phase が生成する成果物の宣言。省略可）:
+#   outputs:
+#     - "src/**/*.py"
+#     - "DESIGN.md"
+#
+# ■ fallbacks（バックエンドのフォールバック。generation 内に設定）:
+#   fallbacks:
+#     coder:
+#       - error_patterns: ["rate limit", "quota", "429", "capacity"]
+#         fallback_backend: "claude"
+#         fallback_model: "claude-opus-4-6"
 #
 # ■ 実行時オプション:
 #   --input "修正内容"          動的指示の注入

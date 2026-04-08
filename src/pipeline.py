@@ -20,7 +20,15 @@ from src.config import (
     get_role_config,
     get_check_config,
 )
-from src.models import AttemptLog, PhaseResult, PipelineState
+from src.contract import (
+    get_failure_taxonomy,
+    classify_failure_type,
+    resolve_strategy,
+    build_checker_repair,
+    build_reviewer_repair,
+    verify_phase_contract,
+)
+from src.models import AttemptLog, ContractViolation, PhaseResult, PipelineState, StepResult
 from src.steps import execute_step
 from src.dashboard import start_dashboard, stop_dashboard
 from src.leader import (
@@ -141,19 +149,27 @@ def execute_phase(
     confidence_threshold: int = 80,
     confidence_step: int = 5,
     prior_outputs: str = "",
+    generation_config: dict | None = None,
 ) -> PhaseResult:
     """Phase 内のステップ列を実行し、失敗時はリトライする"""
     pid = phase["id"]
     title = phase["title"]
     steps = phase.get("steps", [])
+    gen = generation_config or {}
 
     # フェーズ固有の checks があればグローバルより優先
     effective_check_config = phase.get("checks", check_config)
+
+    # Contract / Failure Taxonomy の解決
+    contract = phase.get("contract", {})
+    failure_taxonomy = get_failure_taxonomy(phase, gen)
 
     print(f"\n{'='*60}")
     print(f"Phase: {pid} - {title}")
     step_names = [f"{s['role']}/{s.get('action', s['role'])}" for s in steps]
     print(f"Steps: {' -> '.join(step_names)}")
+    if contract:
+        print(f"Contract: {contract}")
     print(f"{'='*60}")
 
     logs: list[AttemptLog] = []
@@ -169,6 +185,8 @@ def execute_phase(
 
         attempt_log = AttemptLog(attempt=attempt)
         all_ok = True
+        # この試行で検出された violations を蓄積
+        attempt_violations: list[ContractViolation] = []
 
         for step in steps:
             result = execute_step(
@@ -192,54 +210,59 @@ def execute_phase(
                 all_ok = False
                 if result.role == "human":
                     attempt_log.decision = "rejected_by_user"
-                    # human が拒否したらリトライせず即失敗
                     logs.append(attempt_log)
                     _save_attempt_log(run_dir, pid, attempt, attempt_log)
                     return PhaseResult(pid, title, "failed", logs)
                 elif result.role == "checker":
-                    # 構造化フィードバック: failures + stdout/stderr
-                    repair_parts = ["機械検査の失敗:"]
-                    repair_parts.extend(f"- {f}" for f in result.failures)
-                    if result.checker_stdout:
-                        repair_parts.append(f"\n### 標準出力:\n```\n{result.checker_stdout[:2000]}\n```")
-                    if result.checker_stderr:
-                        repair_parts.append(f"\n### エラー出力:\n```\n{result.checker_stderr[:2000]}\n```")
-                    repair = "\n".join(repair_parts)
-                elif result.parsed and not result.parsed.get("pass", False):
-                    repair = result.parsed.get("repair_instructions", "品質を改善してください")
+                    repair, vs = build_checker_repair(result, contract, work_dir, phase)
+                    attempt_violations.extend(vs)
+                    attempt_log.decision = "failed_checker"
+                elif result.parsed and result.parsed.get("pass") is False:
+                    # reviewer が pass=false（steps.py で success=False に統一済み）
+                    repair, vs = build_reviewer_repair(result, contract)
+                    attempt_violations.extend(vs)
+                    attempt_log.decision = "failed_review"
+                    print(f"  [review] 修正指示: {repair[:150]}...")
+                elif result.timed_out:
+                    attempt_violations.append(ContractViolation(
+                        fact="timeout",
+                        detail=f"{result.role}/{result.action} timed out",
+                    ))
+                    repair = f"{result.role}/{result.action} がタイムアウトしました"
+                    attempt_log.decision = f"failed_{result.role}"
                 else:
+                    attempt_violations.append(ContractViolation(
+                        fact="session_error",
+                        detail=f"{result.role}/{result.action}: {result.failures}"[:200],
+                    ))
                     repair = f"{result.role}/{result.action} が失敗しました: {result.failures}"
-                attempt_log.decision = f"failed_{result.role}"
-                break
-
-            # reviewer が pass=false を返した場合
-            if result.parsed and result.parsed.get("pass") is False:
-                all_ok = False
-                # confidence 付き issues から repair_instructions を構築
-                issues = result.parsed.get("issues", [])
-                if issues and isinstance(issues[0], dict):
-                    issue_lines = []
-                    for iss in issues:
-                        desc = iss.get("description", str(iss))
-                        fix = iss.get("fix", "")
-                        file_ref = iss.get("file", "")
-                        line = f"- [{iss.get('confidence', '?')}] {desc}"
-                        if file_ref:
-                            line += f" ({file_ref})"
-                        if fix:
-                            line += f"\n  修正案: {fix}"
-                        issue_lines.append(line)
-                    repair = "レビュー指摘:\n" + "\n".join(issue_lines)
-                else:
-                    repair = result.parsed.get("repair_instructions", "品質を改善してください")
-                attempt_log.decision = "failed_review"
-                print(f"  [review] 修正指示: {repair[:150]}...")
+                    attempt_log.decision = f"failed_{result.role}"
                 break
 
             # human が skip を返した場合
             if result.role == "human" and result.output == "skipped":
                 print(f"  [human] スキップされました")
                 break
+
+        # --- Phase 完了時の Contract 検証 ---
+        if all_ok:
+            phase_vs = verify_phase_contract(contract, phase, work_dir, steps)
+            attempt_violations.extend(phase_vs)
+            if phase_vs:
+                all_ok = False
+                for v in phase_vs:
+                    print(f"  [contract] {v.fact}: {v.pattern}")
+
+        # --- Failure Taxonomy: 畳み込み + strategy dispatch + 記録 ---
+        if attempt_violations:
+            attempt_log.contract_violations = attempt_violations
+            failure_type = classify_failure_type(attempt_violations)
+            strategy = resolve_strategy(failure_type, failure_taxonomy)
+            attempt_log.failure_type = failure_type
+            attempt_log.strategy_applied = strategy
+
+            if failure_type:
+                print(f"  [taxonomy] failure_type={failure_type}, strategy={strategy or '(legacy)'}")
 
         if all_ok:
             attempt_log.decision = "accepted"
@@ -250,6 +273,20 @@ def execute_phase(
 
         logs.append(attempt_log)
         _save_attempt_log(run_dir, pid, attempt, attempt_log)
+
+        # --- Strategy に基づくリトライ判定 ---
+        strategy = attempt_log.strategy_applied
+        if strategy == "abort":
+            print(f"\n  [taxonomy] abort 指定。Phase {pid} を即座に失敗とします。")
+            return PhaseResult(pid, title, "failed", logs)
+        elif strategy == "session_reset_and_retry":
+            # 該当ロールのセッションをリセット（SessionManager 側で次回新規セッションになる）
+            failed_role = attempt_log.steps[-1].role if attempt_log.steps else ""
+            if failed_role and failed_role in session_managers:
+                sm = session_managers[failed_role]
+                if failed_role in sm._sessions:
+                    del sm._sessions[failed_role]
+                    print(f"  [taxonomy] {failed_role} のセッションをリセット")
 
         # リトライ前にウェイト（指数バックオフ: 30s, 60s, 120s, ...）
         if attempt < max_retries:
@@ -414,6 +451,7 @@ def run_pipeline(
             confidence_threshold=confidence_threshold,
             confidence_step=confidence_step,
             prior_outputs=prior_outputs,
+            generation_config=gen,
         )
         results.append(result)
 

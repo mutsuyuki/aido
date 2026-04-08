@@ -106,7 +106,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip
 RUN python3 -m pip install --no-cache-dir pyyaml
 
 # Install llm-agents
-RUN echo 20260327
+RUN echo 20260408
 RUN sudo npm install -g @google/gemini-cli
 RUN sudo npm install -g @anthropic-ai/claude-code
 RUN sudo npm install -g claudeignore
