@@ -104,6 +104,34 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 | **checker** | - | 機械検査（非AI。lint, compile, test 実行） |
 | **human** | - | ユーザー確認ポイント（非AI） |
 
+## Step 単位のバックエンド上書き
+
+`roles` セクションでロール単位にバックエンド・モデルを設定するのが基本だが、step に `backend` / `model` を指定すると、その step だけ別のバックエンドで実行できる。セッションは引き継がない（stateless）。
+
+```yaml
+roles:
+  reviewer:
+    backend: "gemini"
+    model: "gemini-2.5-pro"
+
+phases:
+  - id: "review"
+    steps:
+      - role: reviewer
+        action: review
+        prompt: reviewer_feasibility.md
+        # → gemini で実行（roles の設定通り）
+
+      - role: reviewer
+        action: review
+        prompt: reviewer_demo_quality.md
+        backend: codex
+        model: gpt-5.4
+        # → この step だけ codex で実行
+```
+
+これにより、同じレビューフェーズ内で異なる AI の視点を組み合わせられる。
+
 ## Contract と Failure Taxonomy
 
 ### Contract（フェーズの合格条件）

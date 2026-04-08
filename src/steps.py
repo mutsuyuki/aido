@@ -365,7 +365,24 @@ def execute_step(
 
     # AI ロール
     role_cfg = role_configs.get(role, {})
-    sm = session_managers.get(role)
+
+    # step 単位の backend/model 上書き
+    # 指定されていればその step だけ別の SessionManager を使う
+    step_backend = step.get("backend")
+    step_model = step.get("model")
+    if step_backend or step_model:
+        effective_backend = step_backend or role_cfg.get("backend", "claude")
+        effective_model = step_model or role_cfg.get("model", "")
+        sm = SessionManager(
+            backend=effective_backend,
+            model=effective_model,
+            timeout_sec=role_cfg.get("timeout_sec", 300),
+            permission_mode=role_cfg.get("permission_mode", "dangerously-skip-permissions"),
+        )
+        print(f"  [{role}/{action}] step-level override: {effective_backend}/{effective_model}")
+    else:
+        sm = session_managers.get(role)
+
     if sm is None:
         return StepResult(
             role=role, action=action, success=False,
@@ -388,13 +405,16 @@ def execute_step(
             prior_outputs=prior_outputs,
         )
 
+    # step-level override の場合は stateless（セッション引き継ぎなし）
+    use_session = "stateless" if (step_backend or step_model) else role_cfg.get("session", "continue")
+
     result = _call_ai_step(
         role=role,
         action=action,
         prompt=prompt,
         session_manager=sm,
         work_dir=work_dir,
-        use_session=role_cfg.get("session", "continue"),
+        use_session=use_session,
     )
 
     # Confidence フィルタリング（reviewer の場合）

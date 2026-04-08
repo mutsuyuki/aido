@@ -282,6 +282,19 @@ phases:
 #       action: review_architecture
 #       prompt: reviewer_architecture_system.md
 #
+# ■ Step 単位でバックエンド/モデルを上書き（異なるAIの視点を混合）:
+#   steps:
+#     - role: reviewer
+#       action: review
+#       prompt: reviewer_feasibility.md
+#       # → roles.reviewer の設定（gemini）を使う
+#     - role: reviewer
+#       action: review
+#       prompt: reviewer_demo_quality.md
+#       backend: codex                    # この step だけ codex で実行
+#       model: gpt-5.4
+#   ※ step-level override 時はセッション引き継ぎなし（stateless）
+#
 # ■ AIの代わりに人間が作業:
 #   - role: coder
 #     action: implement
