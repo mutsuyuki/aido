@@ -45,6 +45,10 @@ phases:
       - "ワークディレクトリの既存コードを読んで問題の原因を特定"
       - "最小限の変更で修正する"
       - "既存の動作を壊さないこと"
+    contract:
+      checker_must_pass: true
+      forbidden_patterns:
+        - "TODO:"
     steps:
       - role: coder
         action: implement

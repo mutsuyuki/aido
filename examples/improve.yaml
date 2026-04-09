@@ -53,6 +53,11 @@ phases:
       - "ユーザー指示の内容に基づき、具体的な改善計画を立てる"
       - "改善計画を PLAN.md としてワークディレクトリに保存"
       - "PLAN.md には変更対象ファイル、変更内容、理由を含める"
+    contract:
+      required_files:
+        - "PLAN.md"
+    outputs:
+      - "PLAN.md"
     steps:
       - role: explorer
         action: analyze
@@ -65,6 +70,10 @@ phases:
     tasks:
       - "PLAN.md の改善計画に従って実装する"
       - "既存の動作を壊さないよう注意する"
+    contract:
+      checker_must_pass: true
+      forbidden_patterns:
+        - "TODO:"
     steps:
       - role: coder
         action: implement
@@ -81,6 +90,8 @@ phases:
     tasks:
       - "既存テストが通ることを確認"
       - "改善内容に対応するテストがなければ追加"
+    contract:
+      checker_must_pass: true
     steps:
       - role: tester
         action: write_tests

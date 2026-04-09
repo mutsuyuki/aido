@@ -32,7 +32,11 @@ python main.py run workspace/my-app/settings/project.yaml --dry-run
 # 4. 実行
 python main.py run workspace/my-app/settings/project.yaml --auto-approve
 
-# 5. 改善サイクル（既存アプリに機能追加・バグ修正）
+# 5. 企画立案（コード生成なし。複数視点でブレスト→比較レビュー）
+python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
+  --input "ローカルLLMを活用した個人向けアプリを企画して"
+
+# 6. 改善サイクル（既存アプリに機能追加・バグ修正）
 python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
   --input "気の利いた機能を1つ追加して"
 python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
@@ -58,6 +62,7 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 ├── prompts/                     # デフォルトプロンプト（7ロール分）
 ├── examples/                    # プロジェクトテンプレート（init でコピーされる）
 │   ├── project.yaml             # 新規開発用（設定リファレンスを兼ねる）
+│   ├── plan.yaml                # 企画立案用（ブレスト→比較レビュー）
 │   ├── improve.yaml             # 改善サイクル用
 │   ├── fix.yaml                 # バグ修正用
 │   ├── context/app_spec.md      # 仕様書テンプレート
@@ -66,6 +71,7 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
     └── my-app/                  # プロジェクト単位のディレクトリ
         ├── settings/            # aido パイプライン設定
         │   ├── project.yaml
+        │   ├── plan.yaml
         │   ├── improve.yaml
         │   ├── fix.yaml
         │   ├── context/app_spec.md
@@ -115,6 +121,18 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
     - role: designer          # リトライ時は reviewer の指摘を元に修正
       action: design
     - role: reviewer          # fail なら designer に差し戻し
+      action: review
+```
+
+```yaml
+# 悪い設計: レビューだけの独立フェーズ
+- id: "design"
+  steps:
+    - role: designer
+      action: design
+- id: "review"            # ← designer がいないので修正されない
+  steps:
+    - role: reviewer
       action: review
 ```
 
