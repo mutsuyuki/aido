@@ -141,9 +141,6 @@ phases:
       # - "app_spec.md のディレクトリ構成に従った詳細設計を作成"
       # - "各ファイルの責務・クラス名・主要メソッドを定義"
       # - "go_router のルート定義と認証ガードの設計を含める"
-    contract:
-      required_files:
-        - "DESIGN.md"
     outputs:
       - "DESIGN.md"
     steps:

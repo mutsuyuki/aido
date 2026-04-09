@@ -115,7 +115,7 @@ function renderPhaseConfig(phase) {
   }
 
   if (phase.dependencies?.length > 0) {
-    html += `<div style="margin-bottom:10px;font-size:13px;color:var(--yellow);">Dependencies: ${phase.dependencies.map(d => esc(d)).join(', ')}</div>`;
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Dependencies:')} <span style="font-size:13px;">${phase.dependencies.map(d => esc(d)).join(', ')}</span></div>`;
   }
 
   if (phase.tasks?.length > 0) {
@@ -126,29 +126,20 @@ function renderPhaseConfig(phase) {
   }
 
   if (phase.constraints?.length > 0) {
-    html += '<div style="margin-bottom:10px;"><span style="font-size:13px;color:var(--orange);font-weight:600;">Constraints:</span>';
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Constraints:')}`;
     html += '<ul class="task-list" style="margin-left:16px;">';
     for (const c of phase.constraints) html += `<li style="color:var(--orange);">${esc(c)}</li>`;
     html += '</ul></div>';
   }
 
   if (phase.review_checklist?.length > 0) {
-    html += '<div style="margin-bottom:10px;"><span style="font-size:13px;color:var(--purple,#b388ff);font-weight:600;">Review Checklist:</span>';
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Review Checklist:')}`;
     html += '<ul class="task-list" style="margin-left:16px;">';
     for (const c of phase.review_checklist) html += `<li style="color:var(--purple,#b388ff);">${esc(c)}</li>`;
     html += '</ul></div>';
   }
 
-  // Required Files
-  const requiredFiles = phase.contract?.required_files || [];
-  if (requiredFiles.length > 0) {
-    html += `<div style="margin-bottom:10px;">${subsectionTitle('Required:')}`;
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';
-    for (const f of requiredFiles) html += fileBadge(f);
-    html += '</div></div>';
-  }
-
-  // Outputs
+  // Outputs（宣言された成果物。phase 完了時に存在チェックされる）
   if (phase.outputs?.length > 0) {
     html += `<div style="margin-bottom:10px;">${subsectionTitle('Outputs:')}`;
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';

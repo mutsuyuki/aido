@@ -9,7 +9,6 @@ from pathlib import Path
 from src.contract import (
     get_failure_taxonomy,
     detect_forbidden_patterns,
-    detect_required_files,
     detect_outputs,
     classify_failure_type,
     resolve_strategy,
@@ -44,7 +43,6 @@ def test_failure_taxonomy_phase_overrides_generation():
 
 def test_detect_empty_when_no_contract():
     assert detect_forbidden_patterns({}, Path("/tmp"), {}) == []
-    assert detect_required_files({}, {}, Path("/tmp")) == []
     assert detect_outputs({}, Path("/tmp")) == []
 
 
@@ -52,22 +50,13 @@ def test_detect_forbidden_patterns():
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         (td / "hello.py").write_text("x = 1  # TODO: fix this\ny = 2\n")
-        contract = {"forbidden_patterns": ["TODO:"], "required_files": ["hello.py"]}
-        vs = detect_forbidden_patterns(contract, td, {})
+        contract = {"forbidden_patterns": ["TODO:"]}
+        phase = {"outputs": ["hello.py"]}
+        vs = detect_forbidden_patterns(contract, td, phase)
         assert len(vs) == 1
         assert vs[0].fact == "forbidden_pattern"
         assert vs[0].pattern == "TODO:"
         assert "hello.py:1" in vs[0].file
-
-
-def test_detect_required_files():
-    with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        (td / "exists.py").write_text("pass")
-        contract = {"required_files": ["exists.py", "missing.py"]}
-        vs = detect_required_files(contract, {}, td)
-        assert len(vs) == 1
-        assert vs[0].pattern == "missing.py"
 
 
 def test_detect_outputs():
@@ -160,24 +149,22 @@ def test_build_reviewer_repair():
 # Phase Contract 検証
 # ==========================================
 
-def test_verify_phase_contract_detects_missing():
+def test_verify_phase_contract_detects_missing_output():
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         (td / "DESIGN.md").write_text("# Design")
-        contract = {"required_files": ["DESIGN.md", "MISSING.md"]}
-        phase = {"outputs": ["DESIGN.md"]}
-        vs = verify_phase_contract(contract, phase, td, [])
+        phase = {"outputs": ["DESIGN.md", "MISSING.md"]}
+        vs = verify_phase_contract({}, phase, td, [])
         assert len(vs) == 1
         assert vs[0].pattern == "MISSING.md"
 
 
-def test_verify_phase_contract_all_pass():
+def test_verify_phase_contract_all_outputs_present():
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         (td / "DESIGN.md").write_text("# Design")
-        contract = {"required_files": ["DESIGN.md"]}
         phase = {"outputs": ["DESIGN.md"]}
-        vs = verify_phase_contract(contract, phase, td, [])
+        vs = verify_phase_contract({}, phase, td, [])
         assert len(vs) == 0
 
 

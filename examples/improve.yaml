@@ -53,9 +53,6 @@ phases:
       - "ユーザー指示の内容に基づき、具体的な改善計画を立てる"
       - "改善計画を PLAN.md としてワークディレクトリに保存"
       - "PLAN.md には変更対象ファイル、変更内容、理由を含める"
-    contract:
-      required_files:
-        - "PLAN.md"
     outputs:
       - "PLAN.md"
     steps:

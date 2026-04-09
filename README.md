@@ -193,11 +193,9 @@ phases:
     contract:
       checker_must_pass: true          # checker 非ゼロ終了で失敗
       reviewer_confidence_min: 80      # reviewer の最低 confidence
-      required_files:                  # phase 完了時に存在を検証（glob 可）
-        - "lib/models/*.dart"
-      forbidden_patterns:              # outputs/required_files 内を検索
+      forbidden_patterns:              # outputs 内を検索
         - "TODO:"
-    outputs:                           # この phase が生成する成果物
+    outputs:                           # この phase が生成する成果物（存在チェックあり）
       - "lib/models/*.dart"
 ```
 

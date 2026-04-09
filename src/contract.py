@@ -69,18 +69,15 @@ def detect_forbidden_patterns(
     contract: dict, work_dir: Path, phase: dict,
 ) -> list[ContractViolation]:
     """
-    forbidden_patterns を outputs/required_files の対象ファイルのみで検索する。
+    forbidden_patterns を outputs の対象ファイルのみで検索する。
     対象ファイルが指定されていない場合は検索しない。
     """
     patterns = contract.get("forbidden_patterns", [])
     if not patterns:
         return []
 
-    # 検索対象ファイルの glob パターンを集める
-    target_globs = []
-    for key in ("required_files", "outputs"):
-        target_globs.extend(contract.get(key, []))
-    target_globs.extend(phase.get("outputs", []))
+    # 検索対象: phase の outputs
+    target_globs = list(phase.get("outputs", []))
 
     if not target_globs:
         return []
@@ -108,26 +105,6 @@ def detect_forbidden_patterns(
                         file=f"{rel}:{line_no}",
                         detail=line.strip()[:120],
                     ))
-    return violations
-
-
-def detect_required_files(
-    contract: dict, phase: dict, work_dir: Path,
-) -> list[ContractViolation]:
-    """
-    required_files の glob パターンにマッチするファイルが存在するか検証する。
-    phase 完了時に呼ぶ。
-    """
-    required = contract.get("required_files", [])
-    violations = []
-    for pattern in required:
-        matches = list(work_dir.glob(pattern))
-        if not matches:
-            violations.append(ContractViolation(
-                fact="required_file_missing",
-                pattern=pattern,
-                detail=f"No files matching '{pattern}' in {work_dir}",
-            ))
     return violations
 
 
@@ -241,11 +218,7 @@ def verify_phase_contract(
     """
     violations = []
 
-    # required_files
-    if contract.get("required_files"):
-        violations.extend(detect_required_files(contract, phase, work_dir))
-
-    # outputs
+    # outputs 宣言のファイル存在チェック
     violations.extend(detect_outputs(phase, work_dir))
 
     # forbidden_patterns（checker がないフェーズの場合のみ）
