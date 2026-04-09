@@ -111,6 +111,26 @@ export function infoTable(rows) {
 }
 
 // ==========================================
+// Subsection (グレータイトル + コンテンツ)
+// ==========================================
+
+export function subsectionTitle(text) {
+  return `<span style="font-size:13px;color:var(--text2);font-weight:600;">${esc(text)}</span>`;
+}
+
+// ==========================================
+// Config badge (シアン色のタグ)
+// ==========================================
+
+export function configBadge(text) {
+  return `<span style="padding:2px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--cyan,#80cbc4);">${esc(text)}</span>`;
+}
+
+export function fileBadge(text) {
+  return `<span style="padding:3px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--cyan,#80cbc4);">${esc(text)}</span>`;
+}
+
+// ==========================================
 // Issue item
 // ==========================================
 

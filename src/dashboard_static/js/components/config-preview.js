@@ -3,7 +3,7 @@
  */
 import { fetchSetting } from '../api.js';
 import { esc } from '../common/utils.js';
-import { card, errorCard, sectionTitle, roleTag, infoTable } from '../common/ui.js';
+import { card, errorCard, sectionTitle, roleTag, infoTable, subsectionTitle, configBadge, fileBadge } from '../common/ui.js';
 
 export async function renderConfigPreview(container, name) {
   const configData = await fetchSetting(name);
@@ -119,7 +119,7 @@ function renderPhaseConfig(phase) {
   }
 
   if (phase.tasks?.length > 0) {
-    html += '<div style="margin-bottom:10px;"><span style="font-size:13px;color:var(--text2);font-weight:600;">Tasks:</span>';
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Tasks:')}`;
     html += '<ul class="task-list" style="margin-left:16px;">';
     for (const task of phase.tasks) html += `<li>${esc(task)}</li>`;
     html += '</ul></div>';
@@ -139,30 +139,25 @@ function renderPhaseConfig(phase) {
     html += '</ul></div>';
   }
 
-  // Contract / outputs / phase overrides
-  const badges = [];
-  if (phase.contract) {
-    const c = phase.contract;
-    if (c.checker_must_pass) badges.push('checker_must_pass');
-    if (c.reviewer_confidence_min) badges.push(`confidence≥${c.reviewer_confidence_min}`);
-    if (c.required_files?.length) badges.push(`required: ${c.required_files.join(', ')}`);
-    if (c.forbidden_patterns?.length) badges.push(`forbidden: ${c.forbidden_patterns.join(', ')}`);
+  // Required Files
+  const requiredFiles = phase.contract?.required_files || [];
+  if (requiredFiles.length > 0) {
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Required:')}`;
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';
+    for (const f of requiredFiles) html += fileBadge(f);
+    html += '</div></div>';
   }
-  if (phase.outputs?.length) badges.push(`outputs: ${phase.outputs.join(', ')}`);
-  if (phase.pass_on_max_retries) badges.push('pass_on_max_retries');
-  if (phase.max_retries != null) badges.push(`max_retries: ${phase.max_retries}`);
-  if (phase.confidence_step != null) badges.push(`confidence_step: ${phase.confidence_step}`);
 
-  if (badges.length > 0) {
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
-    for (const b of badges) {
-      html += `<span style="padding:2px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--cyan,#80cbc4);">${esc(b)}</span>`;
-    }
-    html += '</div>';
+  // Outputs
+  if (phase.outputs?.length > 0) {
+    html += `<div style="margin-bottom:10px;">${subsectionTitle('Outputs:')}`;
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';
+    for (const f of phase.outputs) html += fileBadge(f);
+    html += '</div></div>';
   }
 
   // Steps with agent info
-  html += '<div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:6px;">Steps:</div>';
+  html += `<div style="margin-bottom:6px;">${subsectionTitle('Steps:')}</div>`;
   html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:16px;">';
   for (let i = 0; i < (phase.steps || []).length; i++) {
     const step = phase.steps[i];
@@ -173,6 +168,35 @@ function renderPhaseConfig(phase) {
     </span>`;
   }
   html += '</div>';
+
+  // Settings: フラグ・設定値をバッジで表示（常に表示）
+  html += `<div style="margin-top:10px;">${subsectionTitle('Settings:')}`;
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';
+
+  // pass_on_max_retries（常に表示）
+  const pomr = phase.pass_on_max_retries ? 'true' : 'false';
+  html += configBadge(`pass_on_max_retries: ${pomr}`);
+
+  // contract 系
+  if (phase.contract?.checker_must_pass) {
+    html += configBadge('checker_must_pass');
+  }
+  if (phase.contract?.reviewer_confidence_min) {
+    html += configBadge(`confidence \u2265 ${phase.contract.reviewer_confidence_min}`);
+  }
+  if (phase.contract?.forbidden_patterns?.length) {
+    html += configBadge(`forbidden: ${phase.contract.forbidden_patterns.join(', ')}`);
+  }
+
+  // phase-level overrides
+  if (phase.max_retries != null) {
+    html += configBadge(`max_retries: ${phase.max_retries}`);
+  }
+  if (phase.confidence_step != null) {
+    html += configBadge(`confidence_step: ${phase.confidence_step}`);
+  }
+
+  html += '</div></div>';
 
   el.innerHTML = html;
   return el;

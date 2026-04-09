@@ -123,8 +123,7 @@ def parse_config_for_preview(config: dict) -> dict:
             phase_detail["outputs"] = phase["outputs"]
         if phase.get("review_checklist"):
             phase_detail["review_checklist"] = phase["review_checklist"]
-        if phase.get("pass_on_max_retries"):
-            phase_detail["pass_on_max_retries"] = True
+        phase_detail["pass_on_max_retries"] = phase.get("pass_on_max_retries", False)
         if "max_retries" in phase:
             phase_detail["max_retries"] = phase["max_retries"]
         if "confidence_step" in phase:
