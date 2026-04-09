@@ -103,7 +103,7 @@ ENV HOME=/home/$USERNAME
 # aido framework dependencies
 # ========================================
 RUN python3 -m pip install --no-cache-dir --upgrade pip
-RUN python3 -m pip install --no-cache-dir pyyaml
+RUN python3 -m pip install --no-cache-dir pyyaml fastapi uvicorn websockets watchdog pytest
 
 # Install llm-agents
 RUN echo 20260408
