@@ -160,6 +160,12 @@ def execute_phase(
     # フェーズ固有の checks があればグローバルより優先
     effective_check_config = phase.get("checks", check_config)
 
+    # フェーズ単位の上書き（省略時はグローバル値を使用）
+    effective_max_retries = phase.get("max_retries", max_retries)
+    effective_confidence_threshold = phase.get("confidence_threshold", confidence_threshold)
+    effective_confidence_step = phase.get("confidence_step", confidence_step)
+    pass_on_max_retries = phase.get("pass_on_max_retries", False)
+
     # Contract / Failure Taxonomy の解決
     contract = phase.get("contract", {})
     failure_taxonomy = get_failure_taxonomy(phase, gen)
@@ -170,16 +176,18 @@ def execute_phase(
     print(f"Steps: {' -> '.join(step_names)}")
     if contract:
         print(f"Contract: {contract}")
+    if pass_on_max_retries:
+        print(f"pass_on_max_retries: true")
     print(f"{'='*60}")
 
     logs: list[AttemptLog] = []
     repair = ""
 
-    for attempt in range(1, max_retries + 1):
-        print(f"\n  --- 試行 {attempt}/{max_retries} ---")
+    for attempt in range(1, effective_max_retries + 1):
+        print(f"\n  --- 試行 {attempt}/{effective_max_retries} ---")
 
         # リトライ回数に応じてconfidence閾値を引き上げ（最大100）
-        effective_threshold = min(confidence_threshold + confidence_step * (attempt - 1), 100)
+        effective_threshold = min(effective_confidence_threshold + effective_confidence_step * (attempt - 1), 100)
         if effective_threshold != confidence_threshold:
             print(f"  (confidence_threshold: {effective_threshold})")
 
@@ -289,10 +297,15 @@ def execute_phase(
                     print(f"  [taxonomy] {failed_role} のセッションをリセット")
 
         # リトライ前にウェイト（指数バックオフ: 30s, 60s, 120s, ...）
-        if attempt < max_retries:
+        if attempt < effective_max_retries:
             wait_sec = 30 * (2 ** (attempt - 1))
             print(f"\n  リトライ待機中... {wait_sec}秒")
             time.sleep(wait_sec)
+
+    # max_retries 到達
+    if pass_on_max_retries:
+        print(f"\n  Phase {pid} 最大試行数到達。pass_on_max_retries により合格扱い。")
+        return PhaseResult(pid, title, "accepted", logs)
 
     print(f"\n  Phase {pid} 最大試行数到達。失敗。")
     return PhaseResult(pid, title, "failed", logs)

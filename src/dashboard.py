@@ -107,7 +107,7 @@ def parse_config_for_preview(config: dict) -> dict:
                 step_info["prompt_override"] = step["prompt"]
             steps_info.append(step_info)
 
-        phase_details.append({
+        phase_detail = {
             "id": phase["id"],
             "title": phase.get("title", phase["id"]),
             "description": phase.get("description", ""),
@@ -115,7 +115,21 @@ def parse_config_for_preview(config: dict) -> dict:
             "tasks": phase.get("tasks", []),
             "constraints": phase.get("constraints", []),
             "steps": steps_info,
-        })
+        }
+        # Contract / outputs / phase-level overrides
+        if phase.get("contract"):
+            phase_detail["contract"] = phase["contract"]
+        if phase.get("outputs"):
+            phase_detail["outputs"] = phase["outputs"]
+        if phase.get("review_checklist"):
+            phase_detail["review_checklist"] = phase["review_checklist"]
+        if phase.get("pass_on_max_retries"):
+            phase_detail["pass_on_max_retries"] = True
+        if "max_retries" in phase:
+            phase_detail["max_retries"] = phase["max_retries"]
+        if "confidence_step" in phase:
+            phase_detail["confidence_step"] = phase["confidence_step"]
+        phase_details.append(phase_detail)
 
     return {
         "project_name": project.get("name", ""),
@@ -129,6 +143,7 @@ def parse_config_for_preview(config: dict) -> dict:
             "use_leader": gen.get("use_leader", False),
             "confidence_threshold": gen.get("confidence_threshold", 80),
             "confidence_step": gen.get("confidence_step", 5),
+            "failure_taxonomy": gen.get("failure_taxonomy", {}),
         },
         "checks": config.get("checks", {}),
         "phases": phase_details,

@@ -25,6 +25,9 @@ export async function renderConfigPreview(container, name) {
       ['Stop on Failure', configData.generation?.stop_on_failure ? 'Yes' : 'No'],
       ['Leader', configData.generation?.use_leader ? 'ON' : 'OFF'],
       ['Confidence', `${configData.generation?.confidence_threshold}% (+${configData.generation?.confidence_step}% per retry)`],
+      ...(configData.generation?.failure_taxonomy && Object.keys(configData.generation.failure_taxonomy).length > 0
+        ? [['Failure Taxonomy', Object.entries(configData.generation.failure_taxonomy).map(([k,v]) => `${k}: ${v}`).join(', ')]]
+        : []),
     ])}
   `;
   container.appendChild(infoCard);
@@ -127,6 +130,35 @@ function renderPhaseConfig(phase) {
     html += '<ul class="task-list" style="margin-left:16px;">';
     for (const c of phase.constraints) html += `<li style="color:var(--orange);">${esc(c)}</li>`;
     html += '</ul></div>';
+  }
+
+  if (phase.review_checklist?.length > 0) {
+    html += '<div style="margin-bottom:10px;"><span style="font-size:13px;color:var(--purple,#b388ff);font-weight:600;">Review Checklist:</span>';
+    html += '<ul class="task-list" style="margin-left:16px;">';
+    for (const c of phase.review_checklist) html += `<li style="color:var(--purple,#b388ff);">${esc(c)}</li>`;
+    html += '</ul></div>';
+  }
+
+  // Contract / outputs / phase overrides
+  const badges = [];
+  if (phase.contract) {
+    const c = phase.contract;
+    if (c.checker_must_pass) badges.push('checker_must_pass');
+    if (c.reviewer_confidence_min) badges.push(`confidence≥${c.reviewer_confidence_min}`);
+    if (c.required_files?.length) badges.push(`required: ${c.required_files.join(', ')}`);
+    if (c.forbidden_patterns?.length) badges.push(`forbidden: ${c.forbidden_patterns.join(', ')}`);
+  }
+  if (phase.outputs?.length) badges.push(`outputs: ${phase.outputs.join(', ')}`);
+  if (phase.pass_on_max_retries) badges.push('pass_on_max_retries');
+  if (phase.max_retries != null) badges.push(`max_retries: ${phase.max_retries}`);
+  if (phase.confidence_step != null) badges.push(`confidence_step: ${phase.confidence_step}`);
+
+  if (badges.length > 0) {
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
+    for (const b of badges) {
+      html += `<span style="padding:2px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--cyan,#80cbc4);">${esc(b)}</span>`;
+    }
+    html += '</div>';
   }
 
   // Steps with agent info

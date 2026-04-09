@@ -138,6 +138,25 @@ python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
 
 レビューだけの独立フェーズを作ると、reviewer が fail を返しても成果物が修正されないまま同じレビューが繰り返される。
 
+### フェーズ単位の設定上書き
+
+`max_retries`, `confidence_threshold`, `confidence_step` をフェーズ単位で上書きできる。企画・設計フェーズと実装フェーズでレビューの厳しさを変えたい場合に使う。
+
+`pass_on_max_retries: true` を指定すると、最大リトライ回数に達してもフェーズを合格扱いにして次へ進む。企画・設計段階ではベストエフォートで通過させ、実装段階では厳密にレビューを通す、という使い分けができる。
+
+```yaml
+phases:
+  - id: "architecture"
+    max_retries: 5              # このフェーズだけリトライ多め
+    confidence_step: 10         # 閾値の上がりを早く（細かい指摘を早期に除外）
+    pass_on_max_retries: true   # 上限到達時は合格扱いで次へ
+    steps:
+      - role: designer
+        action: design
+      - role: reviewer
+        action: review
+```
+
 ## Step 単位のバックエンド上書き
 
 `roles` セクションでロール単位にバックエンド・モデルを設定するのが基本だが、step に `backend` / `model` を指定すると、その step だけ別のバックエンドで実行できる。セッションは引き継がない（stateless）。
