@@ -119,15 +119,19 @@ export function subsectionTitle(text) {
 }
 
 // ==========================================
-// Config badge (シアン色のタグ)
+// Color badge (汎用タグ)
 // ==========================================
 
+export function colorBadge(text, { color = 'var(--cyan,#80cbc4)', size = '12px', padding = '3px 10px' } = {}) {
+  return `<span style="padding:${padding};background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:${size};color:${color};">${esc(text)}</span>`;
+}
+
 export function configBadge(text) {
-  return `<span style="padding:2px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--cyan,#80cbc4);">${esc(text)}</span>`;
+  return colorBadge(text, { size: '11px', padding: '2px 8px' });
 }
 
 export function fileBadge(text) {
-  return `<span style="padding:3px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--cyan,#80cbc4);">${esc(text)}</span>`;
+  return colorBadge(text);
 }
 
 // ==========================================

@@ -3,7 +3,7 @@
  */
 import { fetchSetting } from '../api.js';
 import { esc } from '../common/utils.js';
-import { card, errorCard, sectionTitle, roleTag, infoTable, subsectionTitle, configBadge, fileBadge } from '../common/ui.js';
+import { card, errorCard, sectionTitle, roleTag, infoTable, subsectionTitle, colorBadge, configBadge, fileBadge } from '../common/ui.js';
 
 export async function renderConfigPreview(container, name) {
   const configData = await fetchSetting(name);
@@ -117,9 +117,7 @@ function renderPhaseConfig(phase) {
   if (phase.dependencies?.length > 0) {
     html += `<div style="margin-bottom:10px;">${subsectionTitle('Dependencies:')}`;
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:16px;margin-top:4px;">';
-    for (const d of phase.dependencies) {
-      html += `<span style="padding:3px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--yellow);">${esc(d)}</span>`;
-    }
+    for (const d of phase.dependencies) html += colorBadge(d, { color: 'var(--yellow)' });
     html += '</div></div>';
   }
 
