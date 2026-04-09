@@ -183,20 +183,21 @@ phases:
 
 ## Contract と Failure Taxonomy
 
-### Contract（フェーズの合格条件）
+### outputs と contract の考え方
 
-フェーズごとに合格条件を宣言できる。省略時は従来挙動（checker が通れば合格）。
+- **outputs** は AI への指示（「これを生成せよ」）。フェーズ完了時に存在チェックも自動で行う。指示と検証を兼ねる。
+- **contract** は outputs 以外の機械的なゲート条件。checker の成否、reviewer の confidence、禁止パターンなど。
 
 ```yaml
 phases:
   - id: "phase_02"
+    outputs:                           # 指示 + 暗黙の存在チェック
+      - "lib/models/*.dart"
     contract:
       checker_must_pass: true          # checker 非ゼロ終了で失敗
       reviewer_confidence_min: 80      # reviewer の最低 confidence
       forbidden_patterns:              # outputs 内を検索
         - "TODO:"
-    outputs:                           # この phase が生成する成果物（存在チェックあり）
-      - "lib/models/*.dart"
 ```
 
 ### Failure Taxonomy（失敗分類と回復戦略）
