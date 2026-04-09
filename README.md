@@ -192,7 +192,8 @@ phases:
 phases:
   - id: "phase_02"
     outputs:                           # 指示 + 暗黙の存在チェック
-      - "lib/models/*.dart"
+      - "lib/models/app_user.dart"
+      - "lib/models/chat_message.dart"
     contract:
       checker_must_pass: true          # checker 非ゼロ終了で失敗
       reviewer_confidence_min: 80      # reviewer の最低 confidence
