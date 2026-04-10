@@ -29,7 +29,12 @@ from src.models import StepResult
 
 
 def _find_json_in_workdir(work_dir: Path, step_start_time: float) -> dict | None:
-    """ステップ実行中にワークディレクトリに作られた .json ファイルからレビュー結果を探す"""
+    """ステップ実行中にワークディレクトリに作られた .json ファイルからレビュー結果を探す。
+
+    誤検出を避けるため:
+      - ファイル名に review/reviewer を含むものを優先
+      - パース後 dict であり、"pass" が bool であることを要求
+    """
     candidates = []
     for f in work_dir.rglob("*.json"):
         try:
@@ -38,17 +43,27 @@ def _find_json_in_workdir(work_dir: Path, step_start_time: float) -> dict | None
         except OSError:
             continue
 
-    for f in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+    # review/reviewer を名前に含むファイルを優先、その後 mtime 降順
+    def _sort_key(p: Path):
+        name = p.name.lower()
+        named = 0 if ("review" in name) else 1
+        return (named, -p.stat().st_mtime)
+
+    for f in sorted(candidates, key=_sort_key):
         try:
             content = f.read_text(encoding="utf-8")
             # コードブロックで囲まれている場合は中身を取り出す
             content = re.sub(r"^```\w*\n", "", content).rstrip("`\n ")
             match = re.search(r"\{[\s\S]*\}", content)
-            if match:
-                parsed = json.loads(match.group(0))
-                if "pass" in parsed:  # レビュー結果のJSONであることを確認
-                    print(f"  [fallback] JSONをファイルから取得: {f.name}")
-                    return parsed
+            if not match:
+                continue
+            parsed = json.loads(match.group(0))
+            if not isinstance(parsed, dict):
+                continue
+            if not isinstance(parsed.get("pass"), bool):
+                continue
+            print(f"  [fallback] JSONをファイルから取得: {f.name}")
+            return parsed
         except (json.JSONDecodeError, OSError):
             continue
     return None

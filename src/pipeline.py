@@ -188,7 +188,7 @@ def execute_phase(
 
         # リトライ回数に応じてconfidence閾値を引き上げ（最大100）
         effective_threshold = min(effective_confidence_threshold + effective_confidence_step * (attempt - 1), 100)
-        if effective_threshold != confidence_threshold:
+        if attempt > 1 and effective_confidence_step > 0:
             print(f"  (confidence_threshold: {effective_threshold})")
 
         attempt_log = AttemptLog(attempt=attempt)
@@ -499,8 +499,17 @@ def run_pipeline(
                     state.failed.remove(pid)
                 continue
             elif decision.decision == "skip":
-                print(f"[Leader] 次の Phase をスキップします。")
-                i += 2
+                skipped_idx = i + 1
+                if skipped_idx < len(phases):
+                    skipped = phases[skipped_idx]
+                    print(f"[Leader] 次の Phase をスキップします: {skipped['id']}")
+                    state.phase_summaries[skipped["id"]] = {
+                        "status": "skipped",
+                        "attempts": 0,
+                    }
+                else:
+                    print(f"[Leader] skip 指定だが次の Phase がありません。")
+                i = skipped_idx + 1
                 continue
             elif decision.decision == "add_phase":
                 for change in decision.plan_changes:
