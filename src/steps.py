@@ -278,7 +278,7 @@ def build_step_prompt(
     step: dict,
     context: str = "",
     repair_instructions: str = "",
-    prior_outputs: str = "",
+    state_listing: str = "",
 ) -> str:
     """ステップ用のプロンプトを組み立てる"""
     parts = [system_prompt]
@@ -306,8 +306,13 @@ def build_step_prompt(
     if context:
         parts.append(f"\n\n## プロジェクト参考資料\n{context}")
 
-    if prior_outputs:
-        parts.append(f"\n\n## 前フェーズの成果物\n{prior_outputs}")
+    if state_listing:
+        parts.append(
+            "\n\n## 利用可能な前フェーズ成果物\n"
+            "以下のファイルが .aido/state/ 配下にあります（symlink）。"
+            "必要に応じて読み込んでください:\n"
+            f"{state_listing}"
+        )
 
     if repair_instructions:
         parts.append(f"\n\n## 修正指示 (前回のフィードバック)\n{repair_instructions}")
@@ -348,7 +353,7 @@ def execute_step(
     repair_instructions: str = "",
     auto_approve: bool = False,
     confidence_threshold: int = 80,
-    prior_outputs: str = "",
+    state_listing: str = "",
 ) -> StepResult:
     """
     1ステップを実行する。
@@ -417,7 +422,7 @@ def execute_step(
         prompt = build_step_prompt(
             system_prompt, phase, step,
             context=context, repair_instructions=repair_instructions,
-            prior_outputs=prior_outputs,
+            state_listing=state_listing,
         )
 
     # step-level override の場合は stateless（セッション引き継ぎなし）

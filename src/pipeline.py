@@ -90,26 +90,96 @@ def _save_pipeline_summary(run_dir: Path, state: PipelineState, results: list[Ph
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
 
-def _load_prior_outputs(run_dir: Path, completed_phases: list[str]) -> str:
-    """完了済みフェーズの成果物をまとめて返す（次フェーズへの注入用）"""
-    parts = []
-    for pid in completed_phases:
-        phase_dir = run_dir / pid
+# ==========================================
+# Canonical state path (path-addressable artifacts)
+# ==========================================
+# 完了済みフェーズの成果物を、固定パス work_dir/.aido/state/<phase_id>/ に
+# symlink で公開する。これにより:
+#   - AI は timestamp を含まない安定パスから過去成果物を読める
+#   - プロンプトに全文埋め込みする必要がなく、truncate もない
+#   - AI が必要なファイルを必要なときだけ読みに行ける
+def _state_root(work_dir: Path) -> Path:
+    return work_dir / ".aido" / "state"
+
+
+def _reset_state_dir(work_dir: Path) -> None:
+    """run 開始時に .aido/state/ を空にする"""
+    aido_dir = work_dir / ".aido"
+    state_root = aido_dir / "state"
+    if state_root.exists() or state_root.is_symlink():
+        shutil.rmtree(state_root, ignore_errors=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    # .aido/ ごと git 管理外にする
+    (aido_dir / ".gitignore").write_text("*\n", encoding="utf-8")
+
+
+def _promote_phase_to_state(
+    work_dir: Path, phase_id: str, source_run_dir: Path, attempt: int,
+) -> None:
+    """accept された attempt を .aido/state/<phase_id>/ に symlink する"""
+    target = (source_run_dir / phase_id / f"attempt_{attempt:02d}").resolve()
+    if not target.exists():
+        return
+    state_root = _state_root(work_dir)
+    state_root.mkdir(parents=True, exist_ok=True)
+    link = state_root / phase_id
+    if link.is_symlink() or link.exists():
+        if link.is_symlink() or link.is_file():
+            link.unlink()
+        else:
+            shutil.rmtree(link, ignore_errors=True)
+    link.symlink_to(target)
+
+
+def _promote_from_resume(
+    work_dir: Path, resume_run_dir: Path, all_phases: list[dict],
+) -> None:
+    """resume 元 run の各フェーズの最終 attempt を state/ に symlink する"""
+    for phase in all_phases:
+        pid = phase["id"]
+        phase_dir = resume_run_dir / pid
         if not phase_dir.exists():
             continue
-        # 最後の attempt の成果物を使う
-        attempt_dirs = sorted(d for d in phase_dir.iterdir() if d.is_dir())
-        if not attempt_dirs:
+        attempts = sorted(
+            d for d in phase_dir.iterdir()
+            if d.is_dir() and d.name.startswith("attempt_")
+        )
+        if not attempts:
             continue
-        last_attempt = attempt_dirs[-1]
-        for f in sorted(last_attempt.iterdir()):
-            if f.is_file() and f.suffix in (".md", ".json", ".txt") and f.name != "log.json":
-                content = f.read_text(encoding="utf-8")
-                # 大きすぎる出力は切り詰め
-                if len(content) > 3000:
-                    content = content[:3000] + "\n... (truncated)"
-                parts.append(f"### {pid} / {f.name}\n{content}")
-    return "\n\n".join(parts)
+        last = attempts[-1]
+        try:
+            attempt_num = int(last.name.split("_", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        _promote_phase_to_state(work_dir, pid, resume_run_dir, attempt_num)
+
+
+def _build_state_listing(work_dir: Path) -> str:
+    """.aido/state/ 配下のファイルを列挙してプロンプト用文字列を作る"""
+    state_root = _state_root(work_dir)
+    if not state_root.exists():
+        return ""
+    lines = []
+    for phase_link in sorted(state_root.iterdir()):
+        # 中身（symlink 解決後）が読めるか
+        try:
+            files = sorted(
+                f for f in phase_link.iterdir()
+                if f.is_file() and f.suffix in (".md", ".json", ".txt") and f.name != "log.json"
+            )
+        except OSError:
+            continue
+        for f in files:
+            try:
+                size = f.stat().st_size
+            except OSError:
+                continue
+            try:
+                rel = f.relative_to(work_dir)
+            except ValueError:
+                rel = f
+            lines.append(f"- {rel} ({size} bytes)")
+    return "\n".join(lines)
 
 
 # ==========================================
@@ -148,7 +218,7 @@ def execute_phase(
     auto_approve: bool = False,
     confidence_threshold: int = 80,
     confidence_step: int = 5,
-    prior_outputs: str = "",
+    state_listing: str = "",
     generation_config: dict | None = None,
 ) -> PhaseResult:
     """Phase 内のステップ列を実行し、失敗時はリトライする"""
@@ -209,7 +279,7 @@ def execute_phase(
                 repair_instructions=repair,
                 auto_approve=auto_approve,
                 confidence_threshold=effective_threshold,
-                prior_outputs=prior_outputs,
+                state_listing=state_listing,
             )
             attempt_log.steps.append(result)
             _save_step_artifact(run_dir, pid, attempt, result)
@@ -376,6 +446,12 @@ def run_pipeline(
             resume_run_dir = candidate
             print(f"  Resume run: {resume_run_dir}")
 
+    # canonical state path のリセット & resume 元からの引き継ぎ
+    work_dir.mkdir(parents=True, exist_ok=True)
+    _reset_state_dir(work_dir)
+    if resume_run_dir:
+        _promote_from_resume(work_dir, resume_run_dir, phases)
+
     # フォールバックルールの読み込み
     fallback_rules_raw = gen.get("fallbacks", {})
     fallback_rules: dict[str, list[FallbackRule]] = {}
@@ -443,12 +519,8 @@ def run_pipeline(
 
         state.remaining = [p["id"] for p in phases[i:]]
 
-        # 完了済みフェーズの成果物を収集（今回の run + resume 元）
-        prior_outputs = _load_prior_outputs(run_dir, state.completed)
-        if resume_run_dir and not prior_outputs:
-            # 今回の run にまだ成果物がなければ、resume 元から読む
-            all_phase_ids = [p["id"] for p in phases]
-            prior_outputs = _load_prior_outputs(resume_run_dir, all_phase_ids)
+        # canonical state path 配下のファイル一覧を生成（プロンプト注入用）
+        state_listing = _build_state_listing(work_dir)
 
         result = execute_phase(
             phase=phase,
@@ -463,7 +535,7 @@ def run_pipeline(
             auto_approve=auto_approve,
             confidence_threshold=confidence_threshold,
             confidence_step=confidence_step,
-            prior_outputs=prior_outputs,
+            state_listing=state_listing,
             generation_config=gen,
         )
         results.append(result)
@@ -471,6 +543,9 @@ def run_pipeline(
         # 状態更新
         if result.status == "accepted":
             state.completed.append(pid)
+            # accept された attempt を canonical state path に昇格
+            accepted_attempt = len(result.attempts)
+            _promote_phase_to_state(work_dir, pid, run_dir, accepted_attempt)
         else:
             state.failed.append(pid)
         state.phase_summaries[pid] = {
