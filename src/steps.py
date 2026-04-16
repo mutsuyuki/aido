@@ -309,7 +309,7 @@ def build_step_prompt(
     if state_listing:
         parts.append(
             "\n\n## 利用可能な前フェーズ成果物\n"
-            "以下のファイルが .aido/state/ 配下にあります（symlink）。"
+            "以下のファイルがプロジェクトの .aido/state/ 配下にあります（symlink）。"
             "必要に応じて読み込んでください:\n"
             f"{state_listing}"
         )

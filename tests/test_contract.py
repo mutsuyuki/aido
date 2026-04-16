@@ -272,37 +272,34 @@ def _make_run_dir_with_attempt(run_dir: Path, phase_id: str, attempt: int, files
 
 def test_reset_state_dir_creates_clean_root():
     with tempfile.TemporaryDirectory() as td:
-        work_dir = Path(td) / "work"
-        work_dir.mkdir()
+        proj_dir = Path(td)
         # 古い state を仕込む
-        old = _state_root(work_dir) / "phase_old"
+        old = _state_root(proj_dir) / "phase_old"
         old.mkdir(parents=True)
         (old / "stale.md").write_text("old", encoding="utf-8")
 
-        _reset_state_dir(work_dir)
+        _reset_state_dir(proj_dir)
 
-        assert _state_root(work_dir).exists()
-        assert not (_state_root(work_dir) / "phase_old").exists()
+        assert _state_root(proj_dir).exists()
+        assert not (_state_root(proj_dir) / "phase_old").exists()
         # gitignore が作られる
-        assert (work_dir / ".aido" / ".gitignore").read_text() == "*\n"
+        assert (proj_dir / ".aido" / ".gitignore").read_text() == "*\n"
 
 
 def test_promote_phase_to_state_creates_symlink():
     with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        work_dir = td / "work"
-        run_dir = td / "runs" / "20260410_120000"
-        work_dir.mkdir(parents=True)
-        _reset_state_dir(work_dir)
+        proj_dir = Path(td)
+        run_dir = proj_dir / ".aido" / "runs" / "20260410_120000"
+        _reset_state_dir(proj_dir)
 
         _make_run_dir_with_attempt(
             run_dir, "phase_01", 2,
             {"designer_design.md": "DESIGN BODY", "log.json": "{}"},
         )
 
-        _promote_phase_to_state(work_dir, "phase_01", run_dir, 2)
+        _promote_phase_to_state(proj_dir, "phase_01", run_dir, 2)
 
-        link = _state_root(work_dir) / "phase_01"
+        link = _state_root(proj_dir) / "phase_01"
         assert link.is_symlink()
         # symlink 越しに内容が読める
         assert (link / "designer_design.md").read_text() == "DESIGN BODY"
@@ -310,28 +307,24 @@ def test_promote_phase_to_state_creates_symlink():
 
 def test_promote_phase_overwrites_previous_symlink():
     with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        work_dir = td / "work"
-        run_dir = td / "runs" / "r1"
-        work_dir.mkdir(parents=True)
-        _reset_state_dir(work_dir)
+        proj_dir = Path(td)
+        run_dir = proj_dir / ".aido" / "runs" / "r1"
+        _reset_state_dir(proj_dir)
 
         _make_run_dir_with_attempt(run_dir, "p", 1, {"a.md": "v1"})
-        _promote_phase_to_state(work_dir, "p", run_dir, 1)
+        _promote_phase_to_state(proj_dir, "p", run_dir, 1)
 
         _make_run_dir_with_attempt(run_dir, "p", 2, {"a.md": "v2"})
-        _promote_phase_to_state(work_dir, "p", run_dir, 2)
+        _promote_phase_to_state(proj_dir, "p", run_dir, 2)
 
-        assert (_state_root(work_dir) / "p" / "a.md").read_text() == "v2"
+        assert (_state_root(proj_dir) / "p" / "a.md").read_text() == "v2"
 
 
 def test_build_state_listing_excludes_log_json():
     with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        work_dir = td / "work"
-        run_dir = td / "runs" / "r"
-        work_dir.mkdir(parents=True)
-        _reset_state_dir(work_dir)
+        proj_dir = Path(td)
+        run_dir = proj_dir / ".aido" / "runs" / "r"
+        _reset_state_dir(proj_dir)
 
         _make_run_dir_with_attempt(
             run_dir, "phase_01", 1,
@@ -341,9 +334,9 @@ def test_build_state_listing_excludes_log_json():
                 "reviewer_review.json": '{"pass": true}',
             },
         )
-        _promote_phase_to_state(work_dir, "phase_01", run_dir, 1)
+        _promote_phase_to_state(proj_dir, "phase_01", run_dir, 1)
 
-        listing = _build_state_listing(work_dir)
+        listing = _build_state_listing(proj_dir)
         assert ".aido/state/phase_01/designer_design.md" in listing
         assert ".aido/state/phase_01/reviewer_review.json" in listing
         assert "log.json" not in listing
@@ -351,25 +344,22 @@ def test_build_state_listing_excludes_log_json():
 
 def test_build_state_listing_empty_when_no_promotions():
     with tempfile.TemporaryDirectory() as td:
-        work_dir = Path(td) / "work"
-        work_dir.mkdir()
-        _reset_state_dir(work_dir)
-        assert _build_state_listing(work_dir) == ""
+        proj_dir = Path(td)
+        _reset_state_dir(proj_dir)
+        assert _build_state_listing(proj_dir) == ""
 
 
 def test_promote_from_resume_picks_last_attempt():
     with tempfile.TemporaryDirectory() as td:
-        td = Path(td)
-        work_dir = td / "work"
-        resume_dir = td / "runs" / "old"
-        work_dir.mkdir(parents=True)
-        _reset_state_dir(work_dir)
+        proj_dir = Path(td)
+        resume_dir = proj_dir / ".aido" / "runs" / "old"
+        _reset_state_dir(proj_dir)
 
         _make_run_dir_with_attempt(resume_dir, "p1", 1, {"x.md": "old1"})
         _make_run_dir_with_attempt(resume_dir, "p1", 2, {"x.md": "old2"})
         _make_run_dir_with_attempt(resume_dir, "p2", 1, {"y.md": "yval"})
 
-        _promote_from_resume(work_dir, resume_dir, [{"id": "p1"}, {"id": "p2"}])
+        _promote_from_resume(proj_dir, resume_dir, [{"id": "p1"}, {"id": "p2"}])
 
-        assert (_state_root(work_dir) / "p1" / "x.md").read_text() == "old2"
-        assert (_state_root(work_dir) / "p2" / "y.md").read_text() == "yval"
+        assert (_state_root(proj_dir) / "p1" / "x.md").read_text() == "old2"
+        assert (_state_root(proj_dir) / "p2" / "y.md").read_text() == "yval"

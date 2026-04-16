@@ -58,7 +58,7 @@ def _discover_project(project_dir: Path) -> None:
     global _project_dir, _settings_dir, _runs_base
     _project_dir = project_dir.resolve()
     _settings_dir = _project_dir / "settings"
-    _runs_base = _project_dir / "runs"
+    _runs_base = _project_dir / ".aido" / "runs"
 
 
 # ==========================================
@@ -286,7 +286,8 @@ def load_phase_detail(run_id: str, phase_id: str) -> dict:
 
 def detect_active_run() -> Optional[dict]:
     """実行中のrunを検出する。
-    pipeline_summary.json がまだ存在しないか、completed+failed < total_phases なら実行中。
+    pipeline_summary.json が存在すればプロセスは終了済み。
+    summary が無く phase ディレクトリがあれば実行中と判断する。
     """
     if not _runs_base or not _runs_base.exists():
         return None
@@ -299,47 +300,17 @@ def detect_active_run() -> Optional[dict]:
     )
     for d in dirs[:3]:  # 最新3つまでチェック
         summary_path = d / "pipeline_summary.json"
-        if not summary_path.exists():
-            # summary なし = 開始直後 or 実行中
-            phase_dirs = [p.name for p in d.iterdir() if p.is_dir()]
-            if phase_dirs:
-                return {
-                    "run_id": d.name,
-                    "status": "running",
-                    "phases_started": sorted(phase_dirs),
-                    "config_name": _active_config_path.stem if _active_config_path else None,
-                }
+        if summary_path.exists():
+            # summary が存在する = パイプラインプロセスは終了済み
             continue
 
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-
-        completed = len(summary.get("completed", []))
-        failed = len(summary.get("failed", []))
-        total = summary.get("total_phases", 0)
-
-        if completed + failed < total:
-            # 進行中のフェーズを特定
-            done_ids = set(summary.get("completed", []) + summary.get("failed", []))
-            all_results = summary.get("results", [])
-            current_phase = None
-            for r in all_results:
-                if r["phase_id"] not in done_ids:
-                    current_phase = r
-                    break
-
+        # summary なし = 開始直後 or 実行中
+        phase_dirs = [p.name for p in d.iterdir() if p.is_dir()]
+        if phase_dirs:
             return {
                 "run_id": d.name,
                 "status": "running",
-                "project": summary.get("project", ""),
-                "total_phases": total,
-                "completed": completed,
-                "failed": failed,
-                "current_phase": current_phase.get("phase_id") if current_phase else None,
-                "current_title": current_phase.get("title") if current_phase else None,
-                "current_attempt": len(current_phase.get("attempts", [])) if current_phase else 0,
+                "phases_started": sorted(phase_dirs),
                 "config_name": _active_config_path.stem if _active_config_path else None,
             }
 
