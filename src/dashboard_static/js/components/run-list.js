@@ -21,7 +21,8 @@ export function renderRunList(container, runs, onSelect) {
     const total = run.total_phases || 0;
     const pending = total - completed - failed;
 
-    const badge = runStatusBadge({ completed, failed, total, inProgress: completed > 0 && completed < total && failed === 0 });
+    const aborted = run.aborted || false;
+    const badge = runStatusBadge({ completed, failed, total, inProgress: run.in_progress || false, aborted });
     const ts = formatTimestamp(run.id);
 
     el.innerHTML = `

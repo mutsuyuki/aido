@@ -13,6 +13,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -58,7 +59,27 @@ def _discover_project(project_dir: Path) -> None:
     global _project_dir, _settings_dir, _runs_base
     _project_dir = project_dir.resolve()
     _settings_dir = _project_dir / "settings"
-    _runs_base = _project_dir / ".aido" / "runs"
+    # work_dir を settings/ 配下の YAML から解決
+    work_dir = _resolve_work_dir(_project_dir, _settings_dir)
+    _runs_base = work_dir / ".aido" / "runs"
+
+
+def _resolve_work_dir(project_dir: Path, settings_dir: Path) -> Path:
+    """settings/ 配下の YAML から work_dir を解決する"""
+    if settings_dir.is_dir():
+        for yaml_file in sorted(settings_dir.glob("*.yaml")):
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                if config and "project" in config and "work_dir" in config["project"]:
+                    wd = Path(config["project"]["work_dir"])
+                    if not wd.is_absolute():
+                        wd = (settings_dir / wd).resolve()
+                    return wd
+            except Exception:
+                continue
+    # フォールバック: 従来のパス
+    return project_dir
 
 
 # ==========================================
@@ -219,12 +240,14 @@ def list_runs() -> list[dict]:
             except (json.JSONDecodeError, OSError):
                 pass
         else:
-            # pipeline_summary.json がまだない = 実行中の可能性
-            # phase ディレクトリの存在で進捗を推定
+            # pipeline_summary.json がまだない = 実行中 or 中断
             phase_dirs = [p for p in d.iterdir() if p.is_dir()]
             if phase_dirs:
-                info["in_progress"] = True
                 info["phase_dirs"] = [p.name for p in sorted(phase_dirs)]
+                if _is_run_stale(d):
+                    info["aborted"] = True
+                else:
+                    info["in_progress"] = True
         runs.append(info)
     return runs
 
@@ -284,10 +307,30 @@ def load_phase_detail(run_id: str, phase_id: str) -> dict:
 # Active run detection
 # ==========================================
 
+_STALE_THRESHOLD_SEC = 21600  # 6時間更新がなければ中断と判断
+
+
+def _is_run_stale(run_dir: Path) -> bool:
+    """runディレクトリ内の最新ファイルが _STALE_THRESHOLD_SEC 以上前なら True"""
+    latest_mtime = 0.0
+    for f in run_dir.rglob("*"):
+        if f.is_file():
+            try:
+                mt = f.stat().st_mtime
+                if mt > latest_mtime:
+                    latest_mtime = mt
+            except OSError:
+                continue
+    if latest_mtime == 0.0:
+        return True
+    return (time.time() - latest_mtime) > _STALE_THRESHOLD_SEC
+
+
 def detect_active_run() -> Optional[dict]:
     """実行中のrunを検出する。
     pipeline_summary.json が存在すればプロセスは終了済み。
     summary が無く phase ディレクトリがあれば実行中と判断する。
+    ただし最終更新が5分以上前なら中断(aborted)と判断する。
     """
     if not _runs_base or not _runs_base.exists():
         return None
@@ -301,12 +344,12 @@ def detect_active_run() -> Optional[dict]:
     for d in dirs[:3]:  # 最新3つまでチェック
         summary_path = d / "pipeline_summary.json"
         if summary_path.exists():
-            # summary が存在する = パイプラインプロセスは終了済み
             continue
 
-        # summary なし = 開始直後 or 実行中
         phase_dirs = [p.name for p in d.iterdir() if p.is_dir()]
         if phase_dirs:
+            if _is_run_stale(d):
+                continue  # 中断されたrunはスキップ
             return {
                 "run_id": d.name,
                 "status": "running",

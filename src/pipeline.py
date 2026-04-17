@@ -93,32 +93,32 @@ def _save_pipeline_summary(run_dir: Path, state: PipelineState, results: list[Ph
 # ==========================================
 # Canonical state path (path-addressable artifacts)
 # ==========================================
-# 完了済みフェーズの成果物を、固定パス <project>/.aido/state/<phase_id>/ に
+# 完了済みフェーズの成果物を、固定パス <work_dir>/.aido/state/<phase_id>/ に
 # symlink で公開する。これにより:
 #   - AI は timestamp を含まない安定パスから過去成果物を読める
 #   - プロンプトに全文埋め込みする必要がなく、truncate もない
 #   - AI が必要なファイルを必要なときだけ読みに行ける
 #
 # .aido/ ディレクトリ構造:
-#   <project>/.aido/
+#   <work_dir>/.aido/
 #     ├── runs/        実行ログ (タイムスタンプ付き)
 #     ├── state/       フェーズ成果物への symlink
 #     └── tmp/         AI バックエンド一時ファイル
-def _aido_root(project_dir: Path) -> Path:
-    return project_dir / ".aido"
+def _aido_root(work_dir: Path) -> Path:
+    return work_dir / ".aido"
 
 
-def _state_root(project_dir: Path) -> Path:
-    return _aido_root(project_dir) / "state"
+def _state_root(work_dir: Path) -> Path:
+    return _aido_root(work_dir) / "state"
 
 
-def _runs_root(project_dir: Path) -> Path:
-    return _aido_root(project_dir) / "runs"
+def _runs_root(work_dir: Path) -> Path:
+    return _aido_root(work_dir) / "runs"
 
 
-def _reset_state_dir(project_dir: Path) -> None:
+def _reset_state_dir(work_dir: Path) -> None:
     """run 開始時に .aido/state/ を空にする"""
-    aido_dir = _aido_root(project_dir)
+    aido_dir = _aido_root(work_dir)
     state_root = aido_dir / "state"
     if state_root.exists() or state_root.is_symlink():
         shutil.rmtree(state_root, ignore_errors=True)
@@ -128,13 +128,13 @@ def _reset_state_dir(project_dir: Path) -> None:
 
 
 def _promote_phase_to_state(
-    project_dir: Path, phase_id: str, source_run_dir: Path, attempt: int,
+    work_dir: Path, phase_id: str, source_run_dir: Path, attempt: int,
 ) -> None:
     """accept された attempt を .aido/state/<phase_id>/ に symlink する"""
     target = (source_run_dir / phase_id / f"attempt_{attempt:02d}").resolve()
     if not target.exists():
         return
-    state_root = _state_root(project_dir)
+    state_root = _state_root(work_dir)
     state_root.mkdir(parents=True, exist_ok=True)
     link = state_root / phase_id
     if link.is_symlink() or link.exists():
@@ -146,7 +146,7 @@ def _promote_phase_to_state(
 
 
 def _promote_from_resume(
-    project_dir: Path, resume_run_dir: Path, all_phases: list[dict],
+    work_dir: Path, resume_run_dir: Path, all_phases: list[dict],
 ) -> None:
     """resume 元 run の各フェーズの最終 attempt を state/ に symlink する"""
     for phase in all_phases:
@@ -165,12 +165,12 @@ def _promote_from_resume(
             attempt_num = int(last.name.split("_", 1)[1])
         except (ValueError, IndexError):
             continue
-        _promote_phase_to_state(project_dir, pid, resume_run_dir, attempt_num)
+        _promote_phase_to_state(work_dir, pid, resume_run_dir, attempt_num)
 
 
-def _build_state_listing(project_dir: Path) -> str:
+def _build_state_listing(work_dir: Path) -> str:
     """.aido/state/ 配下のファイルを列挙してプロンプト用文字列を作る"""
-    state_root = _state_root(project_dir)
+    state_root = _state_root(work_dir)
     if not state_root.exists():
         return ""
     lines = []
@@ -189,7 +189,7 @@ def _build_state_listing(project_dir: Path) -> str:
             except OSError:
                 continue
             try:
-                rel = f.relative_to(project_dir)
+                rel = f.relative_to(work_dir)
             except ValueError:
                 rel = f
             lines.append(f"- {rel} ({size} bytes)")
@@ -424,10 +424,8 @@ def run_pipeline(
             shutil.copy2(src, dst)
             print(f"  Copied {ignore_file} to {work_dir}")
 
-    # runs/ は <project>/.aido/runs/ に保存
-    # project_dir = workspace/gemma-chat/settings/ → .parent = workspace/gemma-chat/
-    proj_root = project_dir.parent
-    runs_base = _runs_root(proj_root)
+    # runs/ は <work_dir>/.aido/runs/ に保存
+    runs_base = _runs_root(work_dir)
     run_dir = runs_base / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -446,16 +444,16 @@ def run_pipeline(
     if resume_run:
         candidate = Path(resume_run)
         if not candidate.is_absolute():
-            candidate = proj_root / candidate
+            candidate = work_dir / candidate
         if candidate.is_dir():
             resume_run_dir = candidate
             print(f"  Resume run: {resume_run_dir}")
 
     # canonical state path のリセット & resume 元からの引き継ぎ
     work_dir.mkdir(parents=True, exist_ok=True)
-    _reset_state_dir(proj_root)
+    _reset_state_dir(work_dir)
     if resume_run_dir:
-        _promote_from_resume(proj_root, resume_run_dir, phases)
+        _promote_from_resume(work_dir, resume_run_dir, phases)
 
     # フォールバックルールの読み込み
     fallback_rules_raw = gen.get("fallbacks", {})
@@ -525,7 +523,7 @@ def run_pipeline(
         state.remaining = [p["id"] for p in phases[i:]]
 
         # canonical state path 配下のファイル一覧を生成（プロンプト注入用）
-        state_listing = _build_state_listing(proj_root)
+        state_listing = _build_state_listing(work_dir)
 
         result = execute_phase(
             phase=phase,
@@ -550,7 +548,7 @@ def run_pipeline(
             state.completed.append(pid)
             # accept された attempt を canonical state path に昇格
             accepted_attempt = len(result.attempts)
-            _promote_phase_to_state(proj_root, pid, run_dir, accepted_attempt)
+            _promote_phase_to_state(work_dir, pid, run_dir, accepted_attempt)
         else:
             state.failed.append(pid)
         state.phase_summaries[pid] = {

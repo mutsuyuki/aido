@@ -73,8 +73,9 @@ export async function renderProjectHome(container, { onSelectConfig, onSelectRun
       const total = run.total_phases || 0;
       const pending = total - completed - failed;
       const inProgress = run.in_progress || isActive;
+      const aborted = run.aborted || false;
 
-      const badge = runStatusBadge({ completed, failed, total, inProgress });
+      const badge = runStatusBadge({ completed, failed, total, inProgress, aborted });
       const ts = formatTimestamp(run.id);
 
       el.innerHTML = `

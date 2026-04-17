@@ -19,11 +19,13 @@ export function statusBadge(status, { live = false } = {}) {
   switch (status) {
     case 'accepted': return badge('DONE', 'accepted');
     case 'failed':   return badge('FAILED', 'failed');
+    case 'aborted':  return badge('ABORTED', 'failed');
     default:         return badge('PENDING', 'pending');
   }
 }
 
-export function runStatusBadge({ completed = 0, failed = 0, total = 0, inProgress = false }) {
+export function runStatusBadge({ completed = 0, failed = 0, total = 0, inProgress = false, aborted = false }) {
+  if (aborted) return statusBadge('aborted');
   if (inProgress) return statusBadge('running', { live: true });
   if (failed > 0) return statusBadge('failed');
   if (completed === total && total > 0) return statusBadge('accepted');

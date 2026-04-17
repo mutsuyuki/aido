@@ -165,7 +165,7 @@ def _call_gemini(
 ) -> AIResult:
     # プロンプトをファイルに書き出し、@file で参照させる
     # これにより長文プロンプトのシェル引数制限を回避し、安定性が上がる
-    prompt_file = _write_prompt_file(prompt, work_dir.parent / ".aido" / "tmp")
+    prompt_file = _write_prompt_file(prompt, work_dir / ".aido" / "tmp")
     cmd = [
         "gemini", "-p",
         f"@{prompt_file} 上記の指示に従って作業してください。作業対象はカレントディレクトリです。必要なファイルは自分で読み込んでください。",
@@ -239,7 +239,7 @@ def _call_codex(
     is_resume: bool,
     timeout_sec: int,
 ) -> AIResult:
-    tmp_dir = work_dir.parent / ".aido" / "tmp"
+    tmp_dir = work_dir / ".aido" / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     phash = _prompt_hash(prompt)
     out_file = tmp_dir / f"codex_out_{phash}.md"
