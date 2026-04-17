@@ -117,6 +117,17 @@ def detect_outputs(phase: dict, work_dir: Path) -> list[ContractViolation]:
     violations = []
     for pattern in outputs:
         matches = list(work_dir.glob(pattern))
+        # case-insensitive fallback: fnmatch でワイルドカードにも対応
+        if not matches:
+            import fnmatch
+            parent_pattern = str(Path(pattern).parent)
+            name_pattern = Path(pattern).name
+            search_dir = work_dir / parent_pattern if parent_pattern != "." else work_dir
+            if search_dir.is_dir():
+                matches = [
+                    p for p in search_dir.iterdir()
+                    if fnmatch.fnmatch(p.name.lower(), name_pattern.lower())
+                ]
         if not matches:
             violations.append(ContractViolation(
                 fact="required_file_missing",
