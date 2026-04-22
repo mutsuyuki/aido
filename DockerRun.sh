@@ -155,23 +155,6 @@ if [ -e "${HOME}/.Xauthority" ]; then
     )
 fi
 
-# Unity MCP relay 用マウント（~/.unity にリレーバイナリと設定がある）
-if [ -d "${HOME}/.unity" ]; then
-    DOCKER_RUN_OPTS+=(
-        --mount="type=bind,src=${HOME}/.unity,dst=${HOME}/.unity"
-    )
-    echo "  Mounted ${HOME}/.unity for Unity MCP relay"
-fi
-
-# /tmp マウント（X11 ソケット + Unity ソケット用）
-# relay_linux は Unix ソケット（/tmp/unity-* 等）で Unity Editor と通信する
-# /tmp 丸ごとマウントで /tmp/.X11-unix も含む
-if [ -e "/tmp" ]; then
-    DOCKER_RUN_OPTS+=(
-        --mount="type=bind,src=/tmp,dst=/tmp"
-    )
-fi
-
 # mDNS (.local) 名前解決用（ホストの avahi-daemon ソケットを共有）
 if [ -e "/var/run/avahi-daemon/socket" ]; then
     DOCKER_RUN_OPTS+=(
