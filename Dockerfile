@@ -106,8 +106,8 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip
 RUN python3 -m pip install --no-cache-dir pyyaml fastapi uvicorn websockets watchdog pytest
 
 # Install llm-agents
-RUN echo 20260408
-RUN sudo npm install -g @google/gemini-cli
-RUN sudo npm install -g @anthropic-ai/claude-code
-RUN sudo npm install -g claudeignore
-RUN sudo npm install -g @openai/codex
+ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+RUN echo 20260605
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://github.com/openai/codex/releases/latest/download/codex-x86_64-unknown-linux-musl.tar.gz | tar -xzO > "${HOME}/.local/bin/codex" && chmod +x "${HOME}/.local/bin/codex"
