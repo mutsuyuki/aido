@@ -17,67 +17,65 @@ AIエージェント（Claude / agy(Antigravity) / Codex）をオーケストレ
 
 ## クイックスタート
 
+aido 本体と `workspace/`（プロジェクト群）は兄弟ディレクトリ。コマンドは aido ディレクトリの中で実行する（`work_dir` などは相対パスで解決される）。
+
 ```bash
 # 1. プロジェクトを初期化（テンプレートをコピー）
-python main.py init workspace/my-app/settings
+python main.py init ../workspace/my-app/settings
 
 # 2. 仕様を記述
-#    workspace/my-app/settings/context/app_spec.md を編集
-#    workspace/my-app/settings/project.yaml の name, work_dir, checks を編集
+#    ../workspace/my-app/settings/context/app_spec.md を編集
+#    ../workspace/my-app/settings/project.yaml の name, work_dir, checks を編集
 
 # 3. dry-run で計画を確認
-python main.py run workspace/my-app/settings/project.yaml --dry-run
+python main.py run ../workspace/my-app/settings/project.yaml --dry-run
 
 # 4. 実行
-python main.py run workspace/my-app/settings/project.yaml --auto-approve
+python main.py run ../workspace/my-app/settings/project.yaml --auto-approve
 
 # 5. 企画立案（コード生成なし。複数視点でブレスト→比較レビュー）
-python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
+python main.py run ../workspace/my-app/settings/plan.yaml --auto-approve \
   --input "ローカルLLMを活用した個人向けアプリを企画して"
 
 # 6. 改善サイクル（既存アプリに機能追加・バグ修正）
-python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
+python main.py run ../workspace/my-app/settings/improve.yaml --auto-approve \
   --input "気の利いた機能を1つ追加して"
-python main.py run workspace/my-app/settings/fix.yaml --auto-approve \
+python main.py run ../workspace/my-app/settings/fix.yaml --auto-approve \
   --input "ログインで500エラーが出る"
 ```
 
 ## ディレクトリ構成
 
 ```
-(repo root)/
-├── Dockerfile                   # 共通環境（これだけで使える）
-├── DockerRun.sh                 # コンテナ起動スクリプト
-├── main.py                      # CLI エントリポイント（init / run / dashboard）
-├── src/                         # フレームワーク内部モジュール
-│   ├── pipeline.py              #   パイプライン実行・リトライ制御
-│   ├── contract.py              #   Contract 検証・Failure Taxonomy
-│   ├── steps.py                 #   ステップ実行・プロンプト組立
-│   ├── ai_backend.py            #   AI CLI 呼び出し・セッション管理
-│   ├── config.py                #   YAML 読み込み・プロンプト解決
-│   ├── leader.py                #   Leader ロジック
-│   ├── models.py                #   データクラス定義
-│   └── dashboard.py             #   Web UI（モニタリング用）
-├── prompts/                     # デフォルトプロンプト（7ロール分）
-├── examples/                    # プロジェクトテンプレート（init でコピーされる）
-│   ├── project.yaml             # 新規開発用（設定リファレンスを兼ねる）
-│   ├── plan.yaml                # 企画立案用（ブレスト→比較レビュー）
-│   ├── improve.yaml             # 改善サイクル用
-│   ├── fix.yaml                 # バグ修正用
-│   ├── context/app_spec.md      # 仕様書テンプレート
-│   └── prompts/README.md        # プロンプト上書きの説明
-└── workspace/                   # gitignored（ランタイム用）
+<共有ルート>/                     # DockerRun.sh がここを ~/share に再現（aido と workspace が兄弟）
+├── aido/                        # ← このリポジトリ（フレームワーク本体）。ここで作業する
+│   ├── Dockerfile               #   共通環境
+│   ├── DockerRun.sh             #   コンテナ起動（自分の場所を基準に aido/workspace/認証をマウント）
+│   ├── main.py                  #   CLI エントリポイント（init / run / dashboard）
+│   ├── src/                     #   フレームワーク内部モジュール
+│   │   ├── pipeline.py          #     パイプライン実行・リトライ制御
+│   │   ├── contract.py          #     Contract 検証・Failure Taxonomy
+│   │   ├── steps.py             #     ステップ実行・プロンプト組立
+│   │   ├── ai_backend.py        #     AI CLI 呼び出し・セッション管理
+│   │   ├── config.py            #     YAML 読み込み・プロンプト解決
+│   │   ├── leader.py            #     Leader ロジック
+│   │   ├── models.py            #     データクラス定義
+│   │   └── dashboard.py         #     Web UI（モニタリング用）
+│   ├── prompts/                 #   デフォルトプロンプト
+│   ├── examples/                #   プロジェクトテンプレート（init でコピーされる）
+│   │   ├── project.yaml / plan.yaml / improve.yaml / fix.yaml
+│   │   ├── context/app_spec.md
+│   │   └── prompts/README.md
+│   └── .gemini/ .claude/ .codex/ .env  # 各CLIの認証（gitignored。起動時に ~/ にマウント）
+└── workspace/                   # ← プロジェクト群（aido の兄弟。aido の外・gitなし）
     └── my-app/                  # プロジェクト単位のディレクトリ
         ├── settings/            # aido パイプライン設定
-        │   ├── project.yaml
-        │   ├── plan.yaml
-        │   ├── improve.yaml
-        │   ├── fix.yaml
+        │   ├── project.yaml / plan.yaml / improve.yaml / fix.yaml
         │   ├── context/app_spec.md
         │   └── prompts/
         ├── work/                # 生成されたアプリ（独立git repo可）
-        │   ├── artifacts/       # パイプラインの非コード成果物（企画書・レビュー等）
-        │   └── .aido/           # フレームワーク内部状態（自動生成・gitignored）
+        │   ├── artifacts/       # 非コード成果物（企画書・レビュー等）
+        │   └── .aido/           # フレームワーク内部状態（自動生成）
         │       ├── runs/        #   実行ログ（タイムスタンプ付き）
         │       ├── state/       #   完了フェーズへの symlink
         │       └── tmp/         #   AI バックエンド一時ファイル
@@ -298,10 +296,10 @@ generation:
 
 ## 成果物記録（.aido/runs/）
 
-パイプライン実行時、各ステップの出力が `workspace/<project>/work/.aido/runs/<timestamp>/` に自動保存される。
+パイプライン実行時、各ステップの出力が `../workspace/<project>/work/.aido/runs/<timestamp>/` に自動保存される。
 
 ```
-workspace/my-app/work/.aido/runs/20260325_143020/
+../workspace/my-app/work/.aido/runs/20260325_143020/
 ├── phase_01/
 │   └── attempt_01/
 │       ├── log.json                    # ステップごとの成否・時間・contract_violations・failure_type
@@ -335,14 +333,19 @@ python main.py dashboard <project>   # モニタリング Web UI を起動
 
 ## Docker 環境
 
-```bash
-# 共通環境でコンテナ起動
-./DockerRun.sh
+`DockerRun.sh` は自分の場所（aido ディレクトリ）を基準に、`aido/`・兄弟の `workspace/`・aido 内の認証（`.gemini`/`.claude`/`.codex`/`.env`/`.claude.json`）をコンテナにマウントする。コンテナ内は `~/share/aido` と `~/share/workspace` に同じレイアウトで再現され、workdir は `~/share/aido`。
 
-# プロジェクト固有環境で起動（workspace/<project>/docker/Dockerfile を使用）
+```bash
+# aido ディレクトリから起動
+cd /path/to/aido
+./DockerRun.sh                   # 共通環境
+
+# プロジェクト固有環境で起動（../workspace/<project>/docker/Dockerfile を使用）
 ./DockerRun.sh gemma-chat
 ./DockerRun.sh news-feeling
 ```
+
+`workspace/` の場所を変えたい場合は環境変数 `AIDO_WORKSPACE=/path/to/workspace ./DockerRun.sh` で上書きできる。
 
 共通の `Dockerfile` には Python, Node.js, LLM CLI ツール等が含まれる。Flutter SDK 等のプロジェクト固有の依存は `workspace/<project>/docker/Dockerfile` で `FROM` 継承して追加する。
 

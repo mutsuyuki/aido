@@ -4,25 +4,22 @@
 #
 # 使い方:
 #   1. テンプレートをコピー:
-#      python main.py init workspace/<プロジェクト名>/settings
+#      python main.py init ../workspace/<プロジェクト名>/settings
 #   2. このファイルと context/app_spec.md を編集
 #   3. 実行:
-#      python main.py run workspace/<プロジェクト名>/settings/project.yaml --auto-approve
-#      python main.py run workspace/<プロジェクト名>/settings/project.yaml --dry-run
+#      python main.py run ../workspace/<プロジェクト名>/settings/project.yaml --auto-approve
+#      python main.py run ../workspace/<プロジェクト名>/settings/project.yaml --dry-run
 #
-# ディレクトリ構成:
-#   (repo root)/
-#     main.py                      ← CLI エントリポイント
-#     src/                         ← フレームワーク本体
-#     prompts/                     ← デフォルトプロンプト
-#     workspace/
+# ディレクトリ構成（aido と workspace は兄弟。aido の中で作業する）:
+#   <共有ルート>/
+#     aido/                        ← フレームワーク本体（main.py / src / prompts / examples）
+#     workspace/                   ← プロジェクト群（aido の外）
 #       my-app/                    ← プロジェクト単位のディレクトリ
 #         settings/                ← このファイルのコピー先
 #           project.yaml
 #           context/app_spec.md    ← アプリ仕様書
 #           prompts/               ← ロールプロンプト上書き用（任意）
-#         work/                    ← work_dir（生成物の出力先）
-#         runs/                    ← 実行ログ（自動生成）
+#         work/                    ← work_dir（生成物の出力先。.aido/runs も配下）
 #         docker/                  ← プロジェクト固有 Dockerfile（任意）
 
 # --- スキーマバージョン ---

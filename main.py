@@ -2,21 +2,21 @@
 """
 aido - AI Development Orchestrator
 
-使い方:
+使い方（aido と workspace は兄弟。aido ディレクトリの中で実行する）:
   # プロジェクトの初期化（テンプレートをコピー）
-  python main.py init workspace/my-app/settings
+  python main.py init ../workspace/my-app/settings
 
   # パイプライン実行
-  python main.py run workspace/my-app/settings/project.yaml --auto-approve
-  python main.py run workspace/my-app/settings/project.yaml --dry-run
-  python main.py run workspace/my-app/settings/project.yaml --only phase_01 phase_02
+  python main.py run ../workspace/my-app/settings/project.yaml --auto-approve
+  python main.py run ../workspace/my-app/settings/project.yaml --dry-run
+  python main.py run ../workspace/my-app/settings/project.yaml --only phase_01 phase_02
 
   # ダッシュボード
-  python main.py dashboard workspace/news-feeling/
+  python main.py dashboard ../workspace/news-feeling/
 
   # 改善・修正サイクル
-  python main.py run workspace/my-app/settings/improve.yaml --auto-approve --input "機能を追加して"
-  python main.py run workspace/my-app/settings/fix.yaml --auto-approve --input "バグを直して"
+  python main.py run ../workspace/my-app/settings/improve.yaml --auto-approve --input "機能を追加して"
+  python main.py run ../workspace/my-app/settings/fix.yaml --auto-approve --input "バグを直して"
 """
 from __future__ import annotations
 

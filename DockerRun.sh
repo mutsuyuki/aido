@@ -7,17 +7,25 @@
 
 HOST_OS_TYPE=$(uname -s)
 BASE_IMAGE="ubuntu:24.04"
-BASE_REPO="$(basename "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
 BASE_TAG="latest"
 PROJECT_NAME="${1:-}"
 
+# --- レイアウト（このスクリプトの場所を基準に自動算出） ---
+# aido本体（このリポジトリ）と workspace（プロジェクト群）は兄弟ディレクトリ:
+#   <root>/aido/       ← このスクリプトの場所。認証(.gemini/.claude/.codex/.env/.claude.json)もここに置く
+#   <root>/workspace/  ← プロジェクト群（環境変数 AIDO_WORKSPACE で別の場所に上書き可）
+# コンテナ内は ~/share/aido と ~/share/workspace に同じレイアウトで再現される。
+AIDO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_DIR="${AIDO_WORKSPACE:-$(cd "${AIDO_DIR}/.." && pwd)/workspace}"
+BASE_REPO="$(basename "${AIDO_DIR}")"
+
 # イメージ名の決定
 if [ -n "${PROJECT_NAME}" ]; then
-    PROJECT_DOCKERFILE="$(pwd)/workspace/${PROJECT_NAME}/docker/Dockerfile"
+    PROJECT_DOCKERFILE="${WORKSPACE_DIR}/${PROJECT_NAME}/docker/Dockerfile"
     if [ ! -f "${PROJECT_DOCKERFILE}" ]; then
         echo "エラー: ${PROJECT_DOCKERFILE} が見つかりません"
         echo "利用可能なプロジェクト:"
-        ls -d workspace/*/docker/ 2>/dev/null | cut -d/ -f2
+        ls -d "${WORKSPACE_DIR}"/*/docker/ 2>/dev/null | while read -r d; do basename "$(dirname "$d")"; done
         exit 1
     fi
     IMAGE_REPOSITORY="aido-${PROJECT_NAME}"
@@ -51,7 +59,8 @@ docker build \
     --build-arg USER_UID="$(id -u)" \
     --build-arg USER_GID="$(id -g)" \
     --tag "${BASE_REPO}:${BASE_TAG}" \
-    .
+    -f "${AIDO_DIR}/Dockerfile" \
+    "${AIDO_DIR}"
 
 # --- 2b. プロジェクト用イメージのビルド（指定時のみ） ---
 if [ -n "${PROJECT_NAME}" ]; then
@@ -62,15 +71,16 @@ if [ -n "${PROJECT_NAME}" ]; then
         --build-arg USERNAME="$(whoami)" \
         -f "${PROJECT_DOCKERFILE}" \
         --tag "${IMAGE_FULLNAME}" \
-        .
+        "${AIDO_DIR}"
 fi
 
 # --- 3. ホスト側のディレクトリ・ファイル準備 ---
-touch "$(pwd)/.env"
-mkdir -p "$(pwd)/.gemini"
-mkdir -p "$(pwd)/.claude"
-touch "$(pwd)/.claude.json"
-mkdir -p "$(pwd)/.codex"
+touch "${AIDO_DIR}/.env"
+mkdir -p "${AIDO_DIR}/.gemini"        # agy/claude/codex の認証は aido 内に置き、下で ~/ にマウントする
+mkdir -p "${AIDO_DIR}/.claude"
+touch "${AIDO_DIR}/.claude.json"
+mkdir -p "${AIDO_DIR}/.codex"
+mkdir -p "${WORKSPACE_DIR}"
 
 if command -v xhost >/dev/null 2>&1; then xhost +; fi
 
@@ -87,15 +97,16 @@ DOCKER_RUN_OPTS=(
     --env="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"
     --env="PULSE_SERVER=${PULSE_SERVER}"
     --env="COLORTERM=truecolor"
-    --env-file="$(pwd)/.env"
+    --env-file="${AIDO_DIR}/.env"
     --env="MCP_HOST_HOME=${HOME}"
-    --mount="type=bind,src=$(pwd),dst=${HOME}/share"
-    --mount="type=bind,src=$(pwd)/.gemini,dst=${HOME}/.gemini"
-    --mount="type=bind,src=$(pwd)/.claude,dst=${HOME}/.claude"
-    --mount="type=bind,src=$(pwd)/.claude.json,dst=${HOME}/.claude.json"
-    --mount="type=bind,src=$(pwd)/.codex,dst=${HOME}/.codex"
+    --mount="type=bind,src=${AIDO_DIR},dst=${HOME}/share/aido"
+    --mount="type=bind,src=${WORKSPACE_DIR},dst=${HOME}/share/workspace"
+    --mount="type=bind,src=${AIDO_DIR}/.gemini,dst=${HOME}/.gemini"
+    --mount="type=bind,src=${AIDO_DIR}/.claude,dst=${HOME}/.claude"
+    --mount="type=bind,src=${AIDO_DIR}/.claude.json,dst=${HOME}/.claude.json"
+    --mount="type=bind,src=${AIDO_DIR}/.codex,dst=${HOME}/.codex"
     --security-opt="seccomp=unconfined"
-    --workdir="${HOME}/share"
+    --workdir="${HOME}/share/aido"
     --name="${CONTAINER_NAME}"
 )
 

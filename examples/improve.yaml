@@ -6,9 +6,9 @@
 # 「何をするか」は --input で実行時に指定する。
 #
 # 使い方:
-#   python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
+#   python main.py run ../workspace/my-app/settings/improve.yaml --auto-approve \
 #     --input "テストカバレッジを増やして"
-#   python main.py run workspace/my-app/settings/improve.yaml --auto-approve \
+#   python main.py run ../workspace/my-app/settings/improve.yaml --auto-approve \
 #     --input "気の利いた機能を1つ企画して追加して"
 
 project:

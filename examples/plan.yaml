@@ -7,9 +7,9 @@
 # max_retries がブラッシュアップの回数になる。
 #
 # 使い方:
-#   python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
+#   python main.py run ../workspace/my-app/settings/plan.yaml --auto-approve \
 #     --input "ローカルLLMを活用した個人向けアプリを企画して"
-#   python main.py run workspace/my-app/settings/plan.yaml --auto-approve \
+#   python main.py run ../workspace/my-app/settings/plan.yaml --auto-approve \
 #     --input-file idea.md
 
 project:
