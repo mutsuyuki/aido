@@ -236,6 +236,7 @@ def list_runs() -> list[dict]:
                 info["total_phases"] = summary.get("total_phases", 0)
                 info["completed"] = len(summary.get("completed", []))
                 info["failed"] = len(summary.get("failed", []))
+                info["warnings"] = summary.get("warnings", [])
                 info["phase_summaries"] = summary.get("phase_summaries", {})
             except (json.JSONDecodeError, OSError):
                 pass

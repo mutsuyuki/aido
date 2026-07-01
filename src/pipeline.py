@@ -83,6 +83,7 @@ def _save_pipeline_summary(run_dir: Path, state: PipelineState, results: list[Ph
         "completed": state.completed,
         "failed": state.failed,
         "issues": state.issues,
+        "warnings": state.warnings,
         "phase_summaries": state.phase_summaries,
         "results": [asdict(r) for r in results],
     }
@@ -454,8 +455,14 @@ def run_pipeline(
             try:
                 _prev = json.loads(_summary_path.read_text(encoding="utf-8"))
                 for _pid, _s in _prev.get("phase_summaries", {}).items():
-                    if _s.get("status") == "accepted":
-                        resumed_completed.add(_pid)
+                    if _s.get("status") != "accepted":
+                        continue
+                    # summary が accepted でも、成果物が state/ に昇格できていなければ
+                    # スキップせず再実行する（壊れた resume 元で依存物が欠けたまま後続へ進むのを防ぐ）。
+                    if not (_state_root(work_dir) / _pid).exists():
+                        print(f"  Resume: Phase {_pid} は前回 accepted だが成果物が見つからないため再実行します。")
+                        continue
+                    resumed_completed.add(_pid)
                 if resumed_completed:
                     print(f"  Resume: 前回 accepted の {len(resumed_completed)} フェーズをスキップして再開: {sorted(resumed_completed)}")
             except Exception as e:
@@ -495,6 +502,34 @@ def run_pipeline(
 
     # Step 単位のプロンプトも事前に読み込む
     step_prompts = _resolve_step_prompts(phases, project_dir)
+
+    # カスタムロールの空プロンプト検出（起動時に警告、実行は止めない）。
+    # <role>_system.md が無く、かつ当該ロールを使う step にも prompt 上書きが無いと、
+    # そのロールは空システムプロンプトで静かに走ってしまうため気づけるようにする。
+    # その場の print は流れて見逃しやすいので、警告は state.warnings に残し、
+    # 実行終了時のサマリと pipeline_summary.json に再掲して後から必ず気づけるようにする。
+    _AI_PROMPTLESS_ROLES = {
+        "coder", "tester", "reviewer", "designer", "documenter", "explorer",
+        "leader", "checker", "human",
+    }
+    startup_warnings: list[str] = []
+    for role_name in role_configs:
+        if role_name in _AI_PROMPTLESS_ROLES or system_prompts.get(role_name):
+            continue
+        naked_steps = [
+            f"{phase['id']}/{step.get('action', role_name)}"
+            for phase in phases
+            for step in phase.get("steps", [])
+            if step.get("role") == role_name
+            and not step_prompts.get(step.get("prompt", ""))
+        ]
+        if naked_steps:
+            msg = (
+                f"カスタムロール '{role_name}' は {role_name}_system.md が見つからず、"
+                f"step 側 prompt も無いため空システムプロンプトで実行されます: {naked_steps}"
+            )
+            print(f"  [warn] {msg}")
+            startup_warnings.append(msg)
     system_prompts.update(step_prompts)
 
     # パイプライン状態
@@ -502,6 +537,7 @@ def run_pipeline(
         project_name=project["name"],
         total_phases=len(phases),
         remaining=[p["id"] for p in phases],
+        warnings=startup_warnings,
     )
 
     # --- Leader: 計画確認 ---
@@ -644,6 +680,10 @@ def run_pipeline(
         print("\n=== 追跡中の問題 ===")
         for issue in state.issues:
             print(f"  - {issue}")
+    if state.warnings:
+        print("\n=== 警告（設定を確認してください） ===")
+        for w in state.warnings:
+            print(f"  [warn] {w}")
     print("Done.")
 
     # ダッシュボードを停止

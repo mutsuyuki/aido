@@ -39,6 +39,20 @@ export async function renderPipelineView(container, runId, onPhaseClick) {
   `;
   container.appendChild(header);
 
+  // Warnings banner (prominent — surfaces promptless custom roles etc. after the run)
+  if (summary.warnings?.length > 0) {
+    const warnBanner = document.createElement('div');
+    warnBanner.className = 'warn-banner';
+    warnBanner.innerHTML = `<div class="warn-banner-title">⚠ ${summary.warnings.length} warning${summary.warnings.length > 1 ? 's' : ''}</div>`;
+    for (const w of summary.warnings) {
+      const el = document.createElement('div');
+      el.className = 'warn-banner-item';
+      el.textContent = w;
+      warnBanner.appendChild(el);
+    }
+    container.appendChild(warnBanner);
+  }
+
   // Agent config summary
   if (configData) {
     container.appendChild(renderAgentSummary(configData));

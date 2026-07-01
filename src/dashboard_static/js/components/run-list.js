@@ -23,11 +23,15 @@ export function renderRunList(container, runs, onSelect) {
 
     const aborted = run.aborted || false;
     const badge = runStatusBadge({ completed, failed, total, inProgress: run.in_progress || false, aborted });
+    const warnCount = (run.warnings || []).length;
+    const warnBadge = warnCount > 0
+      ? `<span class="warn-badge" title="${esc(run.warnings.join('\n'))}">⚠ ${warnCount}</span>`
+      : '';
     const ts = formatTimestamp(run.id);
 
     el.innerHTML = `
       <div>
-        <div class="run-id">${ts} ${badge}</div>
+        <div class="run-id">${ts} ${badge} ${warnBadge}</div>
         <div class="run-project">${esc(run.project || run.id)}${miniBar(run.phase_summaries)}</div>
       </div>
       <div class="run-stats">

@@ -77,3 +77,4 @@ class PipelineState:
     remaining: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
     phase_summaries: dict[str, dict] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
