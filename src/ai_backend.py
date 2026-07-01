@@ -1,12 +1,12 @@
 """
 AIバックエンド抽象化モジュール
 
-Claude / Gemini / Codex CLI を統一インターフェースで呼び出す。
+Claude / Antigravity(agy) / Codex CLI を統一インターフェースで呼び出す。
 各CLIのセッション管理の差異を吸収し、役割ごとにコンテキストを分離・継続できる。
 
 セッション管理の仕組み:
   - Claude:  --session-id <uuid> で作成、--resume <uuid> で継続
-  - Gemini:  初回は自動生成、--list-sessions でUUID取得、--resume <uuid> で継続
+  - agy:     初回は新規会話、-c (--continue) で直近会話を継続（旧 gemini CLI の後継）
   - Codex:   初回は --ephemeral なしで実行、exec resume <uuid> で継続
 """
 from __future__ import annotations
@@ -75,14 +75,6 @@ def _progress_thread(start_time: float, stop_event: threading.Event, label: str)
     return t
 
 
-def _write_prompt_file(prompt: str, tmp_dir: Path) -> Path:
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    h = _prompt_hash(prompt)
-    path = tmp_dir / f"prompt_{h}.md"
-    path.write_text(prompt, encoding="utf-8")
-    return path
-
-
 # ==========================================
 # Claude CLI バックエンド
 # ==========================================
@@ -139,23 +131,14 @@ def _call_claude(
 
 
 # ==========================================
-# Gemini CLI バックエンド
+# Antigravity (agy) CLI バックエンド
 # ==========================================
-def _get_gemini_latest_session_id(work_dir: Path) -> Optional[str]:
-    """直近のGeminiセッションIDを取得する"""
-    try:
-        r = subprocess.run(
-            ["gemini", "--list-sessions"],
-            capture_output=True, text=True, timeout=10, cwd=str(work_dir),
-        )
-        # "  1. description (time ago) [uuid]" の形式からUUIDを取得
-        match = re.search(r"\[([0-9a-f-]{36})\]", r.stdout)
-        return match.group(1) if match else None
-    except Exception:
-        return None
-
-
-def _call_gemini(
+# agy は deprecated になった gemini CLI の後継。非対話実行は `agy -p <prompt>`。
+# gemini と違い `--list-sessions` に相当する機能が無いため、セッション継続は
+# `-c` (--continue: 直近の会話を継続) で行う。これは旧 gemini 実装
+# （--list-sessions で「直近」の UUID を取得して --resume）と同じ
+# 「グローバル最新会話を継続する」挙動であり、移植として等価。
+def _call_agy(
     prompt: str,
     model: str,
     work_dir: Path,
@@ -163,48 +146,57 @@ def _call_gemini(
     is_resume: bool,
     timeout_sec: int,
 ) -> AIResult:
-    # プロンプトをファイルに書き出し、@file で参照させる
-    # これにより長文プロンプトのシェル引数制限を回避し、安定性が上がる
-    prompt_file = _write_prompt_file(prompt, work_dir / ".aido" / "tmp")
-    cmd = [
-        "gemini", "-p",
-        f"@{prompt_file} 上記の指示に従って作業してください。作業対象はカレントディレクトリです。必要なファイルは自分で読み込んでください。",
-        "-o", "text", "--yolo",
-    ]
+    # agy は print モードで cwd を無視し、自前のスクラッチ領域
+    # (~/.gemini/antigravity-cli/scratch/...) にファイルを書いてしまう。
+    # そのため --add-dir で work_dir をワークスペースに追加し、プロンプトでも
+    # 作業ディレクトリを絶対パスで明示して、相対パスがそこに解決されるようにする。
+    work_dir_abs = str(Path(work_dir).resolve())
+    framed_prompt = (
+        f"{prompt}\n\n"
+        f"【作業ディレクトリ】{work_dir_abs}\n"
+        f"ファイルの作成・編集・読み込み・相対パスは、すべてこのディレクトリ内を基準にすること。"
+    )
+    # プロンプトは引数で直接渡す（subprocess のリスト渡しなのでシェル解釈は無く、
+    # ARG_MAX(~2MB) の範囲であれば長文でも安全）。
+    cmd = ["agy", "-p", framed_prompt, "--add-dir", work_dir_abs,
+           "--dangerously-skip-permissions"]
 
     if model:
         cmd.extend(["--model", model])
 
-    if session_id and is_resume:
-        cmd.extend(["--resume", session_id])
+    # agy の print モードは既定タイムアウト 5 分。aido 側の timeout に合わせて
+    # 明示しないと、長時間ステップが agy 内部で途中打ち切りになる。
+    cmd.extend(["--print-timeout", f"{timeout_sec}s"])
+
+    # 継続ロールは直近会話を引き継ぐ（agy には ID 一覧取得が無いため -c を使う）
+    if is_resume:
+        cmd.append("-c")
 
     phash = _prompt_hash(prompt)
-    print(f"  [gemini] model={model or 'default'}, session={session_id or 'new'}, hash={phash}")
+    print(f"  [agy] model={model or 'default'}, session={'continue' if is_resume else 'new'}, hash={phash}")
 
     start = time.time()
     stop_ev = threading.Event()
-    t = _progress_thread(start, stop_ev, "gemini thinking")
+    t = _progress_thread(start, stop_ev, "agy thinking")
     t.start()
     try:
         r = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout_sec, cwd=str(work_dir),
         )
-        # 初回呼び出し時、セッションIDを取得
-        result_session_id = session_id
-        if not is_resume and r.returncode == 0:
-            result_session_id = _get_gemini_latest_session_id(work_dir)
-
+        # agy には会話 ID を取得する手段が無いため session_id は保持しない。
+        # SessionManager 側は SessionInfo の存在で is_resume を判定するため、
+        # session_id=None のままでも「初回=新規／2回目以降=-c」は正しく機能する。
         return AIResult(
             r.stdout.strip(), r.stderr.strip(), r.returncode,
-            round(time.time() - start, 2), "gemini", model or "default",
-            session_id=result_session_id, prompt_hash=phash,
+            round(time.time() - start, 2), "agy", model or "default",
+            session_id=None, prompt_hash=phash,
         )
     except subprocess.TimeoutExpired:
-        return AIResult("", "Timeout", -1, timeout_sec, "gemini", model or "default",
-                        session_id=session_id, prompt_hash=phash, timed_out=True)
+        return AIResult("", "Timeout", -1, timeout_sec, "agy", model or "default",
+                        session_id=None, prompt_hash=phash, timed_out=True)
     except Exception as e:
-        return AIResult("", str(e), -1, 0.0, "gemini", model or "default",
-                        session_id=session_id, prompt_hash=phash)
+        return AIResult("", str(e), -1, 0.0, "agy", model or "default",
+                        session_id=None, prompt_hash=phash)
     finally:
         stop_ev.set()
         t.join()
@@ -343,7 +335,7 @@ class SessionManager:
             self._sessions[role] = session
             is_resume = False
         elif session is None:
-            # Gemini/Codexは初回実行後にIDを取得
+            # agy/Codexは初回実行後にIDを取得（agyはID取得手段が無く常にNoneのまま）
             session = SessionInfo(session_id="", backend=self.backend, role=role)
             self._sessions[role] = session
             is_resume = False
@@ -372,7 +364,7 @@ class SessionManager:
             del self._sessions[role]
             return result
 
-        # セッションIDを更新（Gemini/Codexの初回呼び出し後）
+        # セッションIDを更新（Codexの初回呼び出し後。agyはNoneのまま=-cで継続）
         if result.session_id:
             session.session_id = result.session_id
         session.call_count += 1
@@ -426,8 +418,9 @@ class SessionManager:
                 prompt, self.model, work_dir, session_id, is_resume,
                 self.timeout_sec, self.permission_mode,
             )
-        elif self.backend == "gemini":
-            return _call_gemini(
+        elif self.backend in ("agy", "gemini", "antigravity"):
+            # "gemini" / "antigravity" は後方互換エイリアス（実体は agy CLI）
+            return _call_agy(
                 prompt, self.model, work_dir, session_id, is_resume,
                 self.timeout_sec,
             )

@@ -35,8 +35,8 @@ project:
 
 # --- AI 全体設定 ---
 generation:
-  default_backend: "gemini"        # claude / gemini / codex
-  default_model: "gemini-2.5-pro"
+  default_backend: "agy"        # claude / agy / codex （agy は旧 gemini CLI の後継）
+  default_model: "Gemini 3.1 Pro (High)"   # agy のモデルIDは `agy models` で確認して指定すること
   default_timeout_sec: 600
   default_permission_mode: "bypassPermissions"
   max_retries: 3                   # 各フェーズの最大リトライ回数
@@ -62,14 +62,14 @@ roles:
     backend: "codex"
     model: "gpt-5.4"
   explorer:
-    backend: "gemini"
-    model: "gemini-2.5-pro"
+    backend: "agy"
+    model: "Gemini 3.1 Pro (High)"
   designer:
-    backend: "gemini"
-    model: "gemini-2.5-pro"
+    backend: "agy"
+    model: "Gemini 3.1 Pro (High)"
   reviewer:
-    backend: "gemini"
-    model: "gemini-2.5-pro"
+    backend: "agy"
+    model: "Gemini 3.1 Pro (High)"
 
 # --- 機械検査（全フェーズ共通） ---
 # フェーズ単位で上書きも可能（phase 内に checks: を書く）

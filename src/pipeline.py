@@ -416,14 +416,6 @@ def run_pipeline(
     confidence_threshold = gen.get("confidence_threshold", 80)
     confidence_step = gen.get("confidence_step", 5)
 
-    # ignore ファイルを aido ルートから work_dir にコピー
-    for ignore_file in [".geminiignore", ".claudeignore"]:
-        src = AIDO_DIR / ignore_file
-        dst = work_dir / ignore_file
-        if src.exists() and not dst.exists():
-            shutil.copy2(src, dst)
-            print(f"  Copied {ignore_file} to {work_dir}")
-
     # runs/ は <work_dir>/.aido/runs/ に保存
     runs_base = _runs_root(work_dir)
     run_dir = runs_base / datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

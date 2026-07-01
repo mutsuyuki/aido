@@ -15,8 +15,8 @@ project:
   work_dir: "../work"                # ← プロジェクトに合わせて変更
 
 generation:
-  default_backend: "gemini"
-  default_model: "gemini-2.5-pro"
+  default_backend: "agy"
+  default_model: "Gemini 3.1 Pro (High)"
   default_timeout_sec: 600
   default_permission_mode: "bypassPermissions"
   max_retries: 3
@@ -30,8 +30,8 @@ roles:
     backend: "codex"
     model: "gpt-5.4"
   reviewer:
-    backend: "gemini"
-    model: "gemini-2.5-pro"
+    backend: "agy"
+    model: "Gemini 3.1 Pro (High)"
 
 checks:
   commands:

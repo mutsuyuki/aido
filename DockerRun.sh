@@ -74,21 +74,6 @@ mkdir -p "$(pwd)/.codex"
 
 if command -v xhost >/dev/null 2>&1; then xhost +; fi
 
-# --- 3b. MCP 設定の同期 (.mcp.json -> .gemini/settings.json) ---
-if [ -f "$(pwd)/.mcp.json" ]; then
-    if [ ! -f "$(pwd)/.gemini/settings.json" ]; then
-        echo "{}" > "$(pwd)/.gemini/settings.json"
-    fi
-    # mcpServers を .mcp.json から .gemini/settings.json にマージ
-    if command -v jq >/dev/null 2>&1; then
-        jq -s '.[0] * .[1]' "$(pwd)/.gemini/settings.json" "$(pwd)/.mcp.json" > "$(pwd)/.gemini/settings.tmp.json" && \
-        mv "$(pwd)/.gemini/settings.tmp.json" "$(pwd)/.gemini/settings.json"
-        echo "  Synced .mcp.json -> .gemini/settings.json"
-    else
-        echo "  Warning: jq not found, skipping .mcp.json -> .gemini/settings.json sync"
-    fi
-fi
-
 # --- 4. 実行オプションの構築（共通部分） ---
 DOCKER_RUN_OPTS=(
     --interactive
