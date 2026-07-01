@@ -200,4 +200,32 @@ def get_role_config(config: dict, project_dir: Path = None) -> dict:
 
         result[role_name] = merged
 
+    # defaults に無いカスタムロール（roles セクションで宣言されたもの）も
+    # SessionManager 対象にする。プロンプトは各 step の prompt 上書きで解決する前提。
+    for role_name, user_cfg in roles_config.items():
+        if role_name in result:
+            continue
+        merged = {
+            "backend": gen.get("default_backend", "claude"),
+            "model": gen.get("default_model", ""),
+            "timeout_sec": gen.get("default_timeout_sec", 300),
+            "permission_mode": gen.get("default_permission_mode", "bypassPermissions"),
+            "session": "continue",
+            "prompt": f"{role_name}_system.md",
+        }
+        # frontmatter（<role>_system.md が存在すれば）
+        if project_dir:
+            try:
+                meta, _ = resolve_prompt_with_meta(merged["prompt"], project_dir)
+                for k, v in meta.items():
+                    if k in merged:
+                        merged[k] = v
+            except FileNotFoundError:
+                pass
+        # roles セクションのユーザー設定を最優先で反映
+        for k, v in user_cfg.items():
+            if k in merged:
+                merged[k] = v
+        result[role_name] = merged
+
     return result

@@ -444,8 +444,22 @@ def run_pipeline(
     # canonical state path のリセット & resume 元からの引き継ぎ
     work_dir.mkdir(parents=True, exist_ok=True)
     _reset_state_dir(work_dir)
+    resumed_completed: set[str] = set()
     if resume_run_dir:
         _promote_from_resume(work_dir, resume_run_dir, phases)
+        # 前回 accepted だったフェーズは再実行せず、続き（失敗/未実行フェーズ）から再開する。
+        # 成果物は work_dir にそのまま残っており、state/ にも昇格済みなので参照できる。
+        _summary_path = resume_run_dir / "pipeline_summary.json"
+        if _summary_path.exists():
+            try:
+                _prev = json.loads(_summary_path.read_text(encoding="utf-8"))
+                for _pid, _s in _prev.get("phase_summaries", {}).items():
+                    if _s.get("status") == "accepted":
+                        resumed_completed.add(_pid)
+                if resumed_completed:
+                    print(f"  Resume: 前回 accepted の {len(resumed_completed)} フェーズをスキップして再開: {sorted(resumed_completed)}")
+            except Exception as e:
+                print(f"  Resume: pipeline_summary 読込失敗のため全フェーズ実行します: {e}")
 
     # フォールバックルールの読み込み
     fallback_rules_raw = gen.get("fallbacks", {})
@@ -513,6 +527,14 @@ def run_pipeline(
         pid = phase["id"]
 
         state.remaining = [p["id"] for p in phases[i:]]
+
+        # resume: 前回 accepted 済みフェーズは再実行せずスキップして続きから
+        if pid in resumed_completed:
+            print(f"  [resume] Phase {pid} は前回 accepted。スキップします。")
+            state.completed.append(pid)
+            state.phase_summaries[pid] = {"status": "accepted", "attempts": 0, "resumed": True}
+            i += 1
+            continue
 
         # canonical state path 配下のファイル一覧を生成（プロンプト注入用）
         state_listing = _build_state_listing(work_dir)
