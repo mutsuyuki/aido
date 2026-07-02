@@ -256,13 +256,106 @@ def list_runs() -> list[dict]:
 def load_run_summary(run_id: str) -> Optional[dict]:
     if not _runs_base:
         return None
-    summary_path = _runs_base / run_id / "pipeline_summary.json"
-    if not summary_path.exists():
+    run_dir = _runs_base / run_id
+    summary_path = run_dir / "pipeline_summary.json"
+    if summary_path.exists():
+        try:
+            return json.loads(summary_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+    # pipeline_summary.json が無い = 実行中（または中断）。
+    # runディレクトリの中身から概要を合成し、実行中の run も詳細表示できるようにする。
+    if not run_dir.is_dir():
         return None
-    try:
-        return json.loads(summary_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    return _synthesize_running_summary(run_id, run_dir)
+
+
+def _active_config_phases() -> list[dict]:
+    """実行中 config（無ければ project.yaml）の phases を返す。取得不可なら []。"""
+    candidates = []
+    if _active_config_path and _active_config_path.exists():
+        candidates.append(_active_config_path)
+    if _project_dir:
+        candidates.append(_project_dir / "settings" / "project.yaml")
+    for path in candidates:
+        try:
+            if path.exists():
+                cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                phases = cfg.get("phases", []) or []
+                if phases:
+                    return phases
+        except Exception:
+            continue
+    return []
+
+
+def _load_running_attempts(phase_dir: Path) -> list[dict]:
+    """フェーズの各 attempt を log.json から読み、pipeline_summary の results[].attempts と
+    同じ形（attempt/steps/decision）で返す。steps は表示に要る軽量フィールドのみに絞る。
+    まだ log.json が無い実行中の attempt はプレースホルダで表す。"""
+    out = []
+    for a in sorted(phase_dir.iterdir()):
+        if not (a.is_dir() and a.name.startswith("attempt_")):
+            continue
+        n = len(out) + 1
+        log = a / "log.json"
+        if not log.exists():
+            out.append({"attempt": n, "steps": [], "decision": "running"})
+            continue
+        try:
+            d = json.loads(log.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            out.append({"attempt": n, "steps": [], "decision": "unknown"})
+            continue
+        steps = [
+            {"role": s.get("role"), "action": s.get("action"),
+             "success": s.get("success"), "elapsed_sec": s.get("elapsed_sec")}
+            for s in d.get("steps", [])
+        ]
+        out.append({
+            "attempt": d.get("attempt", n),
+            "steps": steps,
+            "decision": d.get("decision", "unknown"),
+            "failure_type": d.get("failure_type"),
+        })
+    return out
+
+
+def _synthesize_running_summary(run_id: str, run_dir: Path) -> Optional[dict]:
+    """pipeline_summary.json がまだ無い実行中/中断 run の概要を、フェーズ dir から合成する。
+    各 attempt の log.json を読み、完了 run と同じ試行/ステップ詳細を表示できるようにする。
+    stop_on_failure 下で先へ進めている＝直前までのフェーズは accepted。最新更新フェーズが実行中。"""
+    phase_dirs = [d for d in run_dir.iterdir() if d.is_dir()]
+    if not phase_dirs:
         return None
+    phase_dirs.sort(key=lambda d: d.stat().st_mtime)  # 実行順 ≒ 更新時刻順
+    running = not _is_run_stale(run_dir)
+    cfg_phases = _active_config_phases()
+    titles = {p.get("id"): p.get("title", p.get("id")) for p in cfg_phases}
+    total = len(cfg_phases) if cfg_phases else len(phase_dirs)
+    results, completed, phase_summaries = [], [], {}
+    for idx, d in enumerate(phase_dirs):
+        pid = d.name
+        attempts = _load_running_attempts(d)
+        if idx == len(phase_dirs) - 1:
+            status = "running" if running else "aborted"
+        else:
+            status = "accepted"
+            completed.append(pid)
+        phase_summaries[pid] = {"status": status, "attempts": len(attempts)}
+        results.append({"phase_id": pid, "title": titles.get(pid, pid),
+                        "status": status, "attempts": attempts})
+    return {
+        "project": _project_dir.name if _project_dir else run_id,
+        "total_phases": total,
+        "completed": completed,
+        "failed": [],
+        "issues": [],
+        "warnings": [],
+        "phase_summaries": phase_summaries,
+        "results": results,
+        "in_progress": running,
+    }
 
 
 def load_phase_detail(run_id: str, phase_id: str) -> dict:
@@ -347,14 +440,27 @@ def detect_active_run() -> Optional[dict]:
         if summary_path.exists():
             continue
 
-        phase_dirs = [p.name for p in d.iterdir() if p.is_dir()]
-        if phase_dirs:
+        phase_paths = [p for p in d.iterdir() if p.is_dir()]
+        if phase_paths:
             if _is_run_stale(d):
                 continue  # 中断されたrunはスキップ
+            # 実行順 ≒ 更新時刻順。最後に更新されたフェーズが現在実行中。
+            phase_paths.sort(key=lambda p: p.stat().st_mtime)
+            current = phase_paths[-1]
+            n_attempts = len([a for a in current.iterdir()
+                              if a.is_dir() and a.name.startswith("attempt_")])
+            cfg_phases = _active_config_phases()
+            total = len(cfg_phases) if cfg_phases else len(phase_paths)
             return {
                 "run_id": d.name,
                 "status": "running",
-                "phases_started": sorted(phase_dirs),
+                # バナーは簡潔に：Phase <完了数>/<総数>: <現在フェーズ id> (attempt N)
+                "current_phase": current.name,          # 短い id（長い正式タイトルは使わない）
+                "current_attempt": n_attempts,
+                # フロントは completed/failed を「数」として completed+failed する
+                "completed": len(phase_paths) - 1,      # 直前までは accepted
+                "failed": 0,
+                "total_phases": total,
                 "config_name": _active_config_path.stem if _active_config_path else None,
             }
 
